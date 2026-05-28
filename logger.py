@@ -263,7 +263,7 @@ class PlyLogger:
             return
 
         path: str = os.path.join(self.ply_dir, f"splats_{step}.ply")
-        model.get_splats().export_ply(path)
+        model.get_splats().export_ply(path, scene_scale=model.scene_scale)
         print(f"PLY saved to {path}")
 
     def finalize(self) -> None:

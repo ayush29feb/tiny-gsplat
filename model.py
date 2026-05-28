@@ -29,22 +29,24 @@ class Splats:
     def colors(self) -> Tensor:
         return torch.cat([self.sh0, self.shN], 1)
 
-    def activate(self) -> Splats:
+    def activate(self, scene_scale: float = 1.0) -> Splats:
         """Return a new Splats with activated scales (exp) and opacities (sigmoid), scaled by per-Gaussian factor."""
+        factor = scene_scale + torch.exp(self.splat_scale_factor)
         return Splats(
-            means=self.means * self.splat_scale_factor,
+            means=self.means * factor,
             quats=self.quats,
-            scales=torch.exp(self.scales) * self.splat_scale_factor,
+            scales=torch.exp(self.scales) * factor,
             opacities=torch.sigmoid(self.opacities),
             sh0=self.sh0,
             shN=self.shN,
             splat_scale_factor=self.splat_scale_factor,
         )
 
-    def export_ply(self, path: str) -> None:
+    def export_ply(self, path: str, scene_scale: float = 1.0) -> None:
         """Write Gaussian splats to a .ply file. Applies splat_scale_factor to means/scales."""
-        scaled_means = self.means * self.splat_scale_factor
-        scaled_scales = self.scales + torch.log(self.splat_scale_factor)
+        factor = scene_scale + torch.exp(self.splat_scale_factor)
+        scaled_means = self.means * factor
+        scaled_scales = self.scales + torch.log(factor)
         export_splats(
             means=scaled_means, scales=scaled_scales, quats=self.quats,
             opacities=self.opacities, sh0=self.sh0, shN=self.shN,
@@ -178,7 +180,7 @@ class GaussianSplatModel(torch.nn.Module):
             "sh0": torch.nn.Parameter(colors[:, :1, :]),
             "shN": torch.nn.Parameter(colors[:, 1:, :]),
             "splat_scale_factor": torch.nn.Parameter(
-                torch.ones((N, 1)), requires_grad=model_cfg.get("splat_scale_factor", False),
+                torch.zeros((N, 1)), requires_grad=model_cfg.get("splat_scale_factor", False),
             ),
         }).to(device)
 
@@ -292,7 +294,7 @@ class GaussianSplatModel(torch.nn.Module):
             sh_degree = self.model_cfg.sh_degree
 
         # Rasterize
-        splats = self.get_splats().activate()
+        splats = self.get_splats().activate(self.scene_scale)
         renders, alphas, info = self.renderer(
             splats, cameras, sh_degree=sh_degree, **raster_kwargs,
         )
