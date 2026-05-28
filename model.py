@@ -241,6 +241,18 @@ class GaussianSplatModel(torch.nn.Module):
 
         return splat_optimizers, aux_optimizer, schedulers
 
+    def get_splats(self) -> Splats:
+        """Return raw Splats (log-space scales, logit opacities) for export."""
+        return Splats(
+            means=self.splats["means"],
+            quats=self.splats["quats"],
+            scales=self.splats["scales"],
+            opacities=self.splats["opacities"],
+            sh0=self.splats["sh0"],
+            shN=self.splats["shN"],
+            sh_degree=self.model_cfg.sh_degree,
+        )
+
     def forward(
         self,
         camera: CameraData,

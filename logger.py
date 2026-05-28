@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import hydra
 
 from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras
-from model import GaussianSplatModel, Splats
+from model import GaussianSplatModel
 
 
 class TrainMetricsLogger:
@@ -262,17 +262,8 @@ class PlyLogger:
         if step % self.every != 0:
             return
 
-        params = model.splats
-
-        splat_data = Splats(
-            means=params["means"], quats=params["quats"],
-            scales=params["scales"], opacities=params["opacities"],
-            sh0=params["sh0"], shN=params["shN"],
-            sh_degree=model.model_cfg.sh_degree,
-        )
-
         path: str = os.path.join(self.ply_dir, f"splats_{step}.ply")
-        splat_data.export_ply(path)
+        model.get_splats().export_ply(path)
         print(f"PLY saved to {path}")
 
     def finalize(self) -> None:
