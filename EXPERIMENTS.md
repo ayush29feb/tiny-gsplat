@@ -31,6 +31,10 @@
 
 ![](assets/outputs/exp1_baseline/val_renders/val_0004_step7000.png)
 
+**Val PSNR heatmap (image 4, step 7k):**
+
+![](assets/outputs/exp1_baseline/val_psnr_heatmap.png)
+
 **Observations:**
 - Foreground (furniture, walls, whiteboard) is well-reconstructed
 - Ceiling/background still has artifacts — consistent with sparse 29-view indoor capture
@@ -72,6 +76,10 @@
 **Val render (image 4, step 4k — peak val PSNR):**
 
 ![](assets/outputs/exp2_scale_factor/val_renders/val_0004_step4000.png)
+
+**Val PSNR heatmap (image 4, step 4k):**
+
+![](assets/outputs/exp2_scale_factor/val_psnr_heatmap.png)
 
 **Observations:**
 - Scale factor adds 53% more Gaussians (1.82M vs 1.18M) without improving quality — slight 0.2 dB regression
@@ -248,6 +256,10 @@
 **Val render (image 4, step 4k — peak val PSNR):**
 
 ![](assets/outputs/exp7_scale_factor_v2/val_renders/val_0004_step4000.png)
+
+**Val PSNR heatmap (image 4, step 4k):**
+
+![](assets/outputs/exp7_scale_factor_v2/val_psnr_heatmap.png)
 
 **Auto observations:**
 - v2 is slightly worse than v1 (21.12 vs 21.45 dB peak), both worse than baseline (21.63 dB)
