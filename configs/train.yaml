@@ -28,6 +28,7 @@ model:
   bilateral_grid: false
 
 renderer:
+  _target_: model.SplatRenderer
   near_plane: 0.01
   far_plane: 1.0e+10
   antialiased: false
