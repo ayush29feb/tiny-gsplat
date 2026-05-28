@@ -79,3 +79,30 @@
 - Overfitting pattern similar to baseline (peak at 4-7k, gradual decline)
 - Test and val renders look comparable to baseline — no visible improvement or degradation
 - The additional wall time (860s vs 691s) is from rendering more Gaussians
+
+---
+
+## exp3_full_7k
+
+**Config:** `training.max_steps=7000 training.batch_size=4 data.test_every=0`
+
+- All 29 images used for training (no val holdout)
+- 7k steps — corresponds to peak val PSNR step from exp1
+- Default strategy, splat_scale_factor off
+
+**Results:**
+
+| Metric | Value |
+|--------|-------|
+| Gaussians | 777k |
+| Training time | 128s (~2 min) on H100 |
+
+**Test renders (step 7k):**
+
+| Test view 0 | Test view 1 |
+|-------------|-------------|
+| ![](assets/outputs/exp3_full_7k/renders/render_0000_step7000.png) | ![](assets/outputs/exp3_full_7k/renders/render_0001_step7000.png) |
+
+**Observations:**
+- Best quality renders so far — all 29 views used for training, stopped at sweet spot before overfitting
+- Fast training: 128s for the full run
