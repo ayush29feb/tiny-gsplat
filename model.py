@@ -29,6 +29,18 @@ class Splats:
     def colors(self) -> Tensor:
         return torch.cat([self.sh0, self.shN], 1)
 
+    def activate(self) -> Splats:
+        """Return a new Splats with activated scales (exp) and opacities (sigmoid)."""
+        return Splats(
+            means=self.means,
+            quats=self.quats,
+            scales=torch.exp(self.scales),
+            opacities=torch.sigmoid(self.opacities),
+            sh0=self.sh0,
+            shN=self.shN,
+            sh_degree=self.sh_degree,
+        )
+
     def export_ply(self, path: str) -> None:
         """Write Gaussian splats to a .ply file. Expects raw (log-space scales, logit opacities)."""
         export_splats(
@@ -263,19 +275,11 @@ class GaussianSplatModel(torch.nn.Module):
         if sh_degree is None:
             sh_degree = self.model_cfg.sh_degree
 
-        # Extract and activate splat parameters
         # Rasterize
-        splat_data = Splats(
-            means=self.splats["means"],
-            quats=self.splats["quats"],
-            scales=torch.exp(self.splats["scales"]),
-            opacities=torch.sigmoid(self.splats["opacities"]),
-            sh0=self.splats["sh0"],
-            shN=self.splats["shN"],
-            sh_degree=sh_degree,
-        )
+        splats = self.get_splats().activate()
+        splats.sh_degree = sh_degree
         renders, alphas, info = self.renderer(
-            splat_data, camera, **raster_kwargs,
+            splats, camera, **raster_kwargs,
         )
         out_colors: Tensor = renders[..., :3]
 
