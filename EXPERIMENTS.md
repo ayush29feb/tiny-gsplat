@@ -179,4 +179,7 @@
 - Garden with 28 views actually scores slightly lower than capture, possibly because garden is a larger/more complex outdoor scene
 
 **User observations:**
-- (pending)
+- This confirms that the number of views is the primary concern, not camera pose quality
+- Camera poses from the capture dataset are sufficiently accurate
+- The densification algorithm isn't creating enough splats to cover background details when view count is low — it relies on gradient signal which is weak in under-observed regions
+- Next: test whether starting with more initial Gaussians (4x, 8x) helps cover the gaps that densification misses
