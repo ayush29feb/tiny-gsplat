@@ -180,7 +180,8 @@ class GaussianSplatModel(torch.nn.Module):
             "sh0": torch.nn.Parameter(colors[:, :1, :]),
             "shN": torch.nn.Parameter(colors[:, 1:, :]),
             "splat_scale_factor": torch.nn.Parameter(
-                torch.zeros((N, 1)), requires_grad=model_cfg.get("splat_scale_factor", False),
+                torch.log(torch.linalg.norm(points, dim=-1, keepdim=True).clamp(min=scene_scale + 1e-8) - scene_scale),
+                requires_grad=model_cfg.get("splat_scale_factor", False),
             ),
         }).to(device)
 
