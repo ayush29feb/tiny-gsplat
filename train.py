@@ -26,6 +26,7 @@ from omegaconf import DictConfig, OmegaConf
 from gsplat.strategy import DefaultStrategy, MCMCStrategy
 
 from dataset import CameraData, set_random_seed
+from lib_bilagrid import total_variation_loss
 from model import GaussianSplatModel
 
 
@@ -55,7 +56,7 @@ def main(cfg: DictConfig):
     # Renderer + Model
     renderer = hydra.utils.instantiate(cfg.renderer)
     model = GaussianSplatModel(
-        cfg.model, cfg.training,
+        cfg.model,
         len(train_set), scene_scale,
         train_set.width, train_set.height, device,
         renderer=renderer,
@@ -63,7 +64,7 @@ def main(cfg: DictConfig):
     print(f"Initialized {cfg.model.init_num_pts} Gaussians")
 
     # Optimizers + Schedulers
-    splat_optimizers, aux_optimizer, schedulers = model.get_optimizers(cfg.lr)
+    splat_optimizers, aux_optimizer, schedulers = model.get_optimizers(cfg.lr, cfg.training.max_steps)
 
     # Strategy
     strategy = hydra.utils.instantiate(cfg.strategy)
@@ -130,7 +131,12 @@ def main(cfg: DictConfig):
             rendered.permute(0, 3, 1, 2), pixels.permute(0, 3, 1, 2), padding="valid",
         )
         loss = torch.lerp(l1loss, ssimloss, cfg.training.ssim_lambda)
-        loss = loss + 10.0 * model.bilateral_grid_tv_loss() + model.reg_loss()
+        if model.bg_module is not None:
+            loss = loss + 10.0 * total_variation_loss(model.bg_module.grids)
+        if cfg.training.opacity_reg > 0.0:
+            loss = loss + cfg.training.opacity_reg * torch.sigmoid(model.splats["opacities"]).mean()
+        if cfg.training.scale_reg > 0.0:
+            loss = loss + cfg.training.scale_reg * torch.exp(model.splats["scales"]).mean()
 
         with torch.no_grad():
             mse = F.mse_loss(rendered, pixels)

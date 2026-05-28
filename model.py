@@ -129,7 +129,6 @@ class GaussianSplatModel(torch.nn.Module):
     def __init__(
         self,
         model_cfg: DictConfig,
-        training_cfg: DictConfig,
         n_train_images: int,
         scene_scale: float,
         width: int,
@@ -139,7 +138,6 @@ class GaussianSplatModel(torch.nn.Module):
     ) -> None:
         super().__init__()
         self.model_cfg = model_cfg
-        self.training_cfg = training_cfg
         self.device = device
         self.scene_scale = scene_scale
 
@@ -192,8 +190,8 @@ class GaussianSplatModel(torch.nn.Module):
         self.renderer = renderer or SplatRenderer()
 
     def get_optimizers(
-        self, lr_cfg: DictConfig,
-    ) -> tuple[dict[str, torch.optim.Adam], torch.optim.Adam | None]:
+        self, lr_cfg: DictConfig, max_steps: int,
+    ) -> tuple[dict[str, torch.optim.Adam], torch.optim.Adam | None, list]:
         eps = lr_cfg.get("eps", 1e-15)
         betas = tuple(lr_cfg.get("betas", [0.9, 0.999]))
 
@@ -232,7 +230,6 @@ class GaussianSplatModel(torch.nn.Module):
             aux_optimizer = torch.optim.Adam(aux_param_groups, eps=eps)
 
         # Schedulers
-        max_steps = self.training_cfg.max_steps
         schedulers: list = [
             torch.optim.lr_scheduler.ExponentialLR(
                 splat_optimizers["means"], gamma=0.01 ** (1.0 / max_steps)
@@ -301,16 +298,4 @@ class GaussianSplatModel(torch.nn.Module):
 
         return out_colors, alphas, info
 
-    def bilateral_grid_tv_loss(self) -> Tensor | float:
-        if self.bg_module is not None:
-            return total_variation_loss(self.bg_module.grids)
-        return 0.0
-
-    def reg_loss(self) -> Tensor | float:
-        loss: Tensor | float = 0.0
-        if self.training_cfg.opacity_reg > 0.0:
-            loss = loss + self.training_cfg.opacity_reg * torch.sigmoid(self.splats["opacities"]).mean()
-        if self.training_cfg.scale_reg > 0.0:
-            loss = loss + self.training_cfg.scale_reg * torch.exp(self.splats["scales"]).mean()
-        return loss
 
