@@ -16,7 +16,7 @@ from dataset import CameraData, knn, rgb_to_sh
 
 
 @dataclass
-class SplatData:
+class Splats:
     means: Tensor
     quats: Tensor
     scales: Tensor
@@ -34,11 +34,14 @@ class SplatRenderer:
 
     def __call__(
         self,
-        splats: SplatData,
+        splats: Splats,
         camera: CameraData,
-        viewmats: Tensor,
         **kwargs: Any,
     ) -> tuple[Tensor, Tensor, dict[str, Any]]:
+        camtoworld = camera.camtoworld
+        if camtoworld.dim() == 2:
+            camtoworld = camtoworld.unsqueeze(0)
+        viewmats = torch.linalg.inv(camtoworld)
         radial = camera.radial_coeffs
         tangential = camera.tangential_coeffs
         with_ut = self.use_distortion and (radial is not None or tangential is not None)
@@ -250,13 +253,12 @@ class GaussianSplatModel(torch.nn.Module):
         else:
             colors = torch.cat([self.splats["sh0"], self.splats["shN"]], 1)
 
-        splat_data = SplatData(
+        splat_data = Splats(
             means=means, quats=quats, scales=scales,
             opacities=opas, colors=colors, sh_degree=sh_degree,
         )
-        viewmats: Tensor = torch.linalg.inv(camtoworld)
         renders, alphas, info = self.renderer(
-            splat_data, camera, viewmats, **raster_kwargs,
+            splat_data, camera, **raster_kwargs,
         )
         out_colors: Tensor = renders[..., :3]
 
