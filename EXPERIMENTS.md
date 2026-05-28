@@ -130,8 +130,13 @@
 
 ![](assets/outputs/exp4_garden/val_renders/val_0000_step30000.png)
 
-**Observations:**
+**Auto observations:**
 - Val PSNR reaches ~26.9 dB — competitive with published 3DGS results on garden (~27 dB)
 - No overfitting — val PSNR keeps improving through 30k steps, unlike our capture dataset
 - 4.82M Gaussians (vs 1.18M for capture) — more views support more Gaussians effectively
 - Confirms our training code is correct — the quality gap on the capture dataset is from the data (29 sparse views), not a bug
+
+**User observations:**
+- No overfitting curve like we see in our capture — validates that the standard training pipeline has no severe bugs
+- The capture dataset quality gap is a data problem, not a code problem
+- Next steps: determine whether the capture issue is (1) a coverage problem (too few views, sparse angular sampling) or (2) a camera pose accuracy problem (calibration errors in the capture poses)
