@@ -15,7 +15,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras
+import hydra
+from gsplat import export_splats
+
+from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras, rgb_to_sh
 from model import GaussianSplatModel
 
 
@@ -241,7 +244,6 @@ class TestImageLogger:
         self.device = device
         cameras_path: str = self.cameras_path
         if not os.path.isabs(cameras_path):
-            import hydra
             cameras_path = hydra.utils.to_absolute_path(cameras_path)
         self.cameras = load_cameras(cameras_path)
 
@@ -281,8 +283,6 @@ class PlyLogger:
     def step(self, step: int, model: GaussianSplatModel, **kw: Any) -> None:
         if step % self.every != 0:
             return
-        from gsplat import export_splats
-        from dataset import rgb_to_sh
 
         splats = model.splats
         means = splats["means"]

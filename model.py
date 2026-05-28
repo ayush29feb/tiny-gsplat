@@ -7,7 +7,9 @@ import torch.nn.functional as F
 from omegaconf import DictConfig
 from torch import Tensor
 
+from gsplat.cuda._torch_impl import _eval_sh_bases_fast
 from gsplat.rendering import rasterization
+from lib_bilagrid import BilateralGrid, slice as bg_slice, total_variation_loss
 
 from dataset import knn, rgb_to_sh
 
@@ -38,8 +40,6 @@ class AppearanceOptModule(torch.nn.Module):
     def forward(
         self, features: Tensor, embed_ids: Tensor | None, dirs: Tensor, sh_degree: int
     ) -> Tensor:
-        from gsplat.cuda._torch_impl import _eval_sh_bases_fast
-
         C, N = dirs.shape[:2]
         if embed_ids is None:
             embeds = torch.zeros(C, self.embed_dim, device=features.device)
@@ -126,7 +126,6 @@ class GaussianSplatModel(torch.nn.Module):
         self._tv_loss: Any = None
         self._grid_xy: Tensor | None = None
         if model_cfg.bilateral_grid:
-            from lib_bilagrid import BilateralGrid, slice as bg_slice, total_variation_loss
             self.bg_module = BilateralGrid(n_train_images).to(device)
             self._bg_slice = bg_slice
             self._tv_loss = total_variation_loss
