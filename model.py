@@ -28,11 +28,17 @@ class Splats:
 class SplatRenderer:
     """Wraps gsplat rasterization with fixed config (near/far plane, rasterize mode, distortion)."""
 
-    def __init__(self, model_cfg: DictConfig) -> None:
-        self.near_plane: float = model_cfg.near_plane
-        self.far_plane: float = model_cfg.far_plane
-        self.rasterize_mode: str = "antialiased" if model_cfg.antialiased else "classic"
-        self.use_distortion: bool = model_cfg.use_distortion
+    def __init__(
+        self,
+        near_plane: float = 0.01,
+        far_plane: float = 1e10,
+        antialiased: bool = False,
+        use_distortion: bool = False,
+    ) -> None:
+        self.near_plane = near_plane
+        self.far_plane = far_plane
+        self.rasterize_mode: str = "antialiased" if antialiased else "classic"
+        self.use_distortion = use_distortion
 
     def __call__(
         self,
@@ -216,7 +222,12 @@ class GaussianSplatModel(torch.nn.Module):
             grid_xy = grid_xy / torch.tensor([width, height], device=device, dtype=torch.float32)
             self._grid_xy = grid_xy.unsqueeze(0)
 
-        self.renderer = SplatRenderer(model_cfg)
+        self.renderer = SplatRenderer(
+            near_plane=model_cfg.near_plane,
+            far_plane=model_cfg.far_plane,
+            antialiased=model_cfg.antialiased,
+            use_distortion=model_cfg.use_distortion,
+        )
 
     def get_optimizers(
         self,
