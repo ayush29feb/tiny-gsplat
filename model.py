@@ -175,13 +175,9 @@ class GaussianSplatModel(torch.nn.Module):
             torch.nn.init.zeros_(self.app_module.color_head[-1].bias)
 
         self.bg_module: torch.nn.Module | None = None
-        self._bg_slice: Any = None
-        self._tv_loss: Any = None
         self._grid_xy: Tensor | None = None
         if model_cfg.bilateral_grid:
             self.bg_module = BilateralGrid(n_train_images).to(device)
-            self._bg_slice = bg_slice
-            self._tv_loss = total_variation_loss
             pixel_y, pixel_x = torch.meshgrid(
                 torch.arange(height, device=device, dtype=torch.float32) + 0.5,
                 torch.arange(width, device=device, dtype=torch.float32) + 0.5,
@@ -264,9 +260,9 @@ class GaussianSplatModel(torch.nn.Module):
         )
         out_colors: Tensor = renders[..., :3]
 
-        if self.bg_module is not None and image_id is not None and self._bg_slice is not None:
+        if self.bg_module is not None and image_id is not None:
             image_id_t = image_id if isinstance(image_id, Tensor) else torch.tensor([image_id], device=self.device)
-            out_colors = self._bg_slice(
+            out_colors = bg_slice(
                 self.bg_module,
                 self._grid_xy.expand(out_colors.shape[0], -1, -1, -1),
                 out_colors,
@@ -280,8 +276,8 @@ class GaussianSplatModel(torch.nn.Module):
         return out_colors, alphas, info
 
     def bilateral_grid_tv_loss(self) -> Tensor | float:
-        if self.bg_module is not None and self._tv_loss is not None:
-            return self._tv_loss(self.bg_module.grids)
+        if self.bg_module is not None:
+            return total_variation_loss(self.bg_module.grids)
         return 0.0
 
     def reg_loss(self) -> Tensor | float:
