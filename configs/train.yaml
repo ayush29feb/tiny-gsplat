@@ -14,7 +14,6 @@ model:
   init_opa: 0.1
   init_scale: 1.0
   sh_degree: 3
-  sh_degree_interval: 1000
   random_bkgd: false
   app_opt: false
   bilateral_grid: false
@@ -29,6 +28,7 @@ renderer:
 training:
   max_steps: 7000
   batch_size: 4
+  sh_degree_interval: 1000
   ssim_lambda: 0.2
   opacity_reg: 0.0
   scale_reg: 0.0

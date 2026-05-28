@@ -139,7 +139,7 @@ def main(cfg: DictConfig):
             tangential_coeffs=train_cams.tangential_coeffs[batch_idx] if train_cams.tangential_coeffs is not None else None,
         )
 
-        sh_degree_to_use = min(step // cfg.model.sh_degree_interval, cfg.model.sh_degree)
+        sh_degree_to_use = min(step // cfg.training.sh_degree_interval, cfg.model.sh_degree)
 
         strategy = schedule.strategy
         rendered, alphas, info = model(
