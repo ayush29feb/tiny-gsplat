@@ -201,6 +201,10 @@
 | 400k | 21.23 dB | 13k | 21.10 dB | 1.00M | 330s |
 | 800k | 20.67 dB | 10k | 20.54 dB | 1.05M | 357s |
 
+**Comparison — val PSNR, train PSNR, Gaussian count:**
+
+![](assets/outputs/exp6_init_pts/comparison.png)
+
 **Auto observations:**
 - More initial points is strictly worse — monotonic quality decrease with more init pts
 - All runs converge to ~1M Gaussians regardless of starting count — densification/pruning dominates
