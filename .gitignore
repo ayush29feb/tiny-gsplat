@@ -6,4 +6,3 @@
 __pycache__/
 *.pyc
 create_env_meta.sh
-EXPERIMENTS.md
