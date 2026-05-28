@@ -118,7 +118,6 @@ class GaussianSplatModel(torch.nn.Module):
     def __init__(
         self,
         model_cfg: DictConfig,
-        lr_cfg: DictConfig,
         training_cfg: DictConfig,
         n_train_images: int,
         scene_scale: float,
@@ -129,7 +128,6 @@ class GaussianSplatModel(torch.nn.Module):
     ) -> None:
         super().__init__()
         self.model_cfg = model_cfg
-        self.lr_cfg = lr_cfg
         self.training_cfg = training_cfg
         self.device = device
         self.scene_scale = scene_scale
@@ -148,23 +146,18 @@ class GaussianSplatModel(torch.nn.Module):
         quats: Tensor = torch.rand((N, 4))
         opacities: Tensor = torch.logit(torch.full((N,), model_cfg.init_opa))
 
-        # Register splat parameters with their learning rates
-        self._splat_params: list[tuple[str, torch.nn.Parameter, float]] = [
-            ("means", torch.nn.Parameter(points), lr_cfg.means * scene_scale),
-            ("scales", torch.nn.Parameter(scales), lr_cfg.scales),
-            ("quats", torch.nn.Parameter(quats), lr_cfg.quats),
-            ("opacities", torch.nn.Parameter(opacities), lr_cfg.opacities),
-        ]
-
         # Always use SH coefficients for colors
         colors = torch.zeros((N, (model_cfg.sh_degree + 1) ** 2, 3))
         colors[:, 0, :] = rgb_to_sh(rgbs)
-        self._splat_params.append(("sh0", torch.nn.Parameter(colors[:, :1, :]), lr_cfg.sh0))
-        self._splat_params.append(("shN", torch.nn.Parameter(colors[:, 1:, :]), lr_cfg.shN))
 
-        self.splats = torch.nn.ParameterDict(
-            {n: v for n, v, _ in self._splat_params}
-        ).to(device)
+        self.splats = torch.nn.ParameterDict({
+            "means": torch.nn.Parameter(points),
+            "scales": torch.nn.Parameter(scales),
+            "quats": torch.nn.Parameter(quats),
+            "opacities": torch.nn.Parameter(opacities),
+            "sh0": torch.nn.Parameter(colors[:, :1, :]),
+            "shN": torch.nn.Parameter(colors[:, 1:, :]),
+        }).to(device)
 
         # Optional per-image appearance correction (affine color transform)
         self.app_module: AppearanceEmbedding | None = None
@@ -188,11 +181,19 @@ class GaussianSplatModel(torch.nn.Module):
         self.renderer = renderer or SplatRenderer()
 
     def get_optimizers(
-        self,
+        self, lr_cfg: DictConfig,
     ) -> tuple[dict[str, torch.optim.Adam], list[torch.optim.Adam], list[torch.optim.Adam]]:
         # Splat parameter optimizers
+        splat_lrs = {
+            "means": lr_cfg.means * self.scene_scale,
+            "scales": lr_cfg.scales,
+            "quats": lr_cfg.quats,
+            "opacities": lr_cfg.opacities,
+            "sh0": lr_cfg.sh0,
+            "shN": lr_cfg.shN,
+        }
         splat_optimizers: dict[str, torch.optim.Adam] = {}
-        for name, _, lr in self._splat_params:
+        for name, lr in splat_lrs.items():
             splat_optimizers[name] = torch.optim.Adam(
                 [{"params": self.splats[name], "lr": lr, "name": name}],
                 eps=1e-15, betas=(0.9, 0.999), fused=True,
@@ -204,7 +205,7 @@ class GaussianSplatModel(torch.nn.Module):
             app_optimizers = [
                 torch.optim.Adam(
                     self.app_module.parameters(),
-                    lr=self.lr_cfg.app_opt, weight_decay=1e-6,
+                    lr=lr_cfg.app_opt, weight_decay=1e-6,
                 ),
             ]
 

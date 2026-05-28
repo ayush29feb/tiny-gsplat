@@ -55,7 +55,7 @@ def main(cfg: DictConfig):
     # Renderer + Model
     renderer = SplatRenderer(**cfg.renderer)
     model = GaussianSplatModel(
-        cfg.model, cfg.lr, cfg.training,
+        cfg.model, cfg.training,
         len(train_set), scene_scale,
         train_set.width, train_set.height, device,
         renderer=renderer,
@@ -63,7 +63,7 @@ def main(cfg: DictConfig):
     print(f"Initialized {cfg.model.init_num_pts} Gaussians")
 
     # Optimizers
-    splat_optimizers, app_optimizers, bg_optimizers = model.get_optimizers()
+    splat_optimizers, app_optimizers, bg_optimizers = model.get_optimizers(cfg.lr)
 
     # Strategy
     strategy = hydra.utils.instantiate(cfg.strategy)
