@@ -7,7 +7,7 @@ Usage:
   python train.py training.max_steps=30000
   python train.py train_data.val_ids=[20] val_data.val_ids=[20]
   python train.py model.app_opt=true model.antialiased=true
-  python train.py strategy._target_=gsplat.strategy.MCMCStrategy
+  python train.py 'strategies=[{_target_: gsplat.strategy.DefaultStrategy, start_step: 0, stop_step: 2000}, {_target_: gsplat.strategy.MCMCStrategy, start_step: 2000, stop_step: 30000}]'
 """
 
 from __future__ import annotations
@@ -28,6 +28,45 @@ from gsplat.strategy import DefaultStrategy, MCMCStrategy
 from dataset import CameraData, set_random_seed
 from lib_bilagrid import total_variation_loss
 from model import GaussianSplatModel
+
+
+class StrategySchedule:
+    """Manages a sequence of gsplat strategies, each active for a step range."""
+
+    def __init__(self, strategy_cfgs: list, splats, optimizers, scene_scale: float):
+        self.entries: list[dict] = []
+        for cfg in strategy_cfgs:
+            cfg = dict(cfg)
+            start = cfg.pop("start_step")
+            stop = cfg.pop("stop_step")
+            strategy = hydra.utils.instantiate(cfg)
+            strategy.check_sanity(splats, optimizers)
+            if isinstance(strategy, DefaultStrategy):
+                state = strategy.initialize_state(scene_scale=scene_scale)
+            elif isinstance(strategy, MCMCStrategy):
+                state = strategy.initialize_state()
+            self.entries.append({"strategy": strategy, "state": state, "start": start, "stop": stop})
+        self._active_idx: int = 0
+
+    @property
+    def active(self):
+        return self.entries[self._active_idx]
+
+    @property
+    def strategy(self):
+        return self.active["strategy"]
+
+    @property
+    def state(self):
+        return self.active["state"]
+
+    def update(self, step: int):
+        for i, e in enumerate(self.entries):
+            if e["start"] <= step < e["stop"]:
+                if i != self._active_idx:
+                    self._active_idx = i
+                    print(f"\n[step {step}] Switched to {type(e['strategy']).__name__}")
+                return
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
@@ -67,18 +106,7 @@ def main(cfg: DictConfig):
     splat_optimizers, aux_optimizer, schedulers = model.get_optimizers(cfg.lr, cfg.training.max_steps)
 
     # Strategy
-    strategy = hydra.utils.instantiate(cfg.strategy)
-    strategy.check_sanity(model.splats, splat_optimizers)
-    if isinstance(strategy, DefaultStrategy):
-        strategy_state = strategy.initialize_state(scene_scale=scene_scale)
-    elif isinstance(strategy, MCMCStrategy):
-        strategy_state = strategy.initialize_state()
-
-    mcmc_strategy = None
-    mcmc_strategy_state = None
-    strategy_switch_step = cfg.get("strategy_switch_step", None)
-    if cfg.get("mcmc_strategy") is not None and cfg.mcmc_strategy is not None:
-        mcmc_strategy = hydra.utils.instantiate(cfg.mcmc_strategy)
+    schedule = StrategySchedule(cfg.strategies, model.splats, splat_optimizers, scene_scale)
 
     max_steps = cfg.training.max_steps
 
@@ -113,6 +141,7 @@ def main(cfg: DictConfig):
 
         sh_degree_to_use = min(step // cfg.model.sh_degree_interval, cfg.model.sh_degree)
 
+        strategy = schedule.strategy
         rendered, alphas, info = model(
             batch_cam,
             image_id=image_id, sh_degree=sh_degree_to_use,
@@ -122,7 +151,7 @@ def main(cfg: DictConfig):
         # Strategy pre-backward
         strategy.step_pre_backward(
             params=model.splats, optimizers=splat_optimizers,
-            state=strategy_state, step=step, info=info,
+            state=schedule.state, step=step, info=info,
         )
 
         # Loss
@@ -158,31 +187,19 @@ def main(cfg: DictConfig):
         for sched in schedulers:
             sched.step()
 
-        # Strategy switch: Default → MCMC at the configured step
-        if (
-            strategy_switch_step is not None
-            and mcmc_strategy is not None
-            and step == strategy_switch_step
-            and isinstance(strategy, DefaultStrategy)
-        ):
-            mcmc_strategy.check_sanity(model.splats, splat_optimizers)
-            mcmc_strategy_state = mcmc_strategy.initialize_state()
-            strategy = mcmc_strategy
-            strategy_state = mcmc_strategy_state
-            print(f"\n[step {step}] Switched to MCMCStrategy")
-
-        # Strategy post-backward
+        # Strategy post-backward + schedule update
         if isinstance(strategy, DefaultStrategy):
             strategy.step_post_backward(
                 params=model.splats, optimizers=splat_optimizers,
-                state=strategy_state, step=step, info=info, packed=False,
+                state=schedule.state, step=step, info=info, packed=False,
             )
         elif isinstance(strategy, MCMCStrategy):
             strategy.step_post_backward(
                 params=model.splats, optimizers=splat_optimizers,
-                state=strategy_state, step=step, info=info,
+                state=schedule.state, step=step, info=info,
                 lr=schedulers[0].get_last_lr()[0],
             )
+        schedule.update(step)
 
         # Loggers
         for lg in loggers:

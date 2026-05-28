@@ -54,11 +54,10 @@ lr:
   betas: [0.9, 0.999]
   app_opt_weight_decay: 1.0e-6
 
-strategy:
-  _target_: gsplat.strategy.DefaultStrategy
-
-mcmc_strategy: null
-strategy_switch_step: null
+strategies:
+  - _target_: gsplat.strategy.DefaultStrategy
+    start_step: 0
+    stop_step: ${training.max_steps}
 
 loggers:
   train_metrics:
