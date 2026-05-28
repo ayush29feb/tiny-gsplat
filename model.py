@@ -301,10 +301,3 @@ class GaussianSplatModel(torch.nn.Module):
             loss = loss + self.training_cfg.scale_reg * torch.exp(self.splats["scales"]).mean()
         return loss
 
-    def save_ckpt(self, path: str, step: int) -> None:
-        data: dict[str, Any] = {"step": step, "splats": self.splats.state_dict()}
-        if self.app_module is not None:
-            data["app_module"] = self.app_module.state_dict()
-        if self.bg_module is not None:
-            data["bilateral_grid"] = self.bg_module.state_dict()
-        torch.save(data, path)

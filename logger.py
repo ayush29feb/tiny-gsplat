@@ -291,7 +291,7 @@ class CheckpointLogger:
         if step % self.every != 0:
             return
         path: str = os.path.join(self.result_dir, f"ckpt_{step}.pt")
-        model.save_ckpt(path, step)
+        torch.save({"step": step, "model": model.state_dict()}, path)
         print(f"Checkpoint saved to {path}")
 
     def finalize(self) -> None:
