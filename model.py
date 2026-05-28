@@ -23,7 +23,6 @@ class Splats:
     opacities: Tensor
     sh0: Tensor
     shN: Tensor
-    sh_degree: int
 
     @property
     def colors(self) -> Tensor:
@@ -38,7 +37,6 @@ class Splats:
             opacities=torch.sigmoid(self.opacities),
             sh0=self.sh0,
             shN=self.shN,
-            sh_degree=self.sh_degree,
         )
 
     def export_ply(self, path: str) -> None:
@@ -69,6 +67,7 @@ class SplatRenderer:
         self,
         splats: Splats,
         camera: CameraData,
+        sh_degree: int | None = None,
         **kwargs: Any,
     ) -> tuple[Tensor, Tensor, dict[str, Any]]:
         # Compute view matrices from camera-to-world
@@ -98,7 +97,7 @@ class SplatRenderer:
             near_plane=self.near_plane,
             far_plane=self.far_plane,
             rasterize_mode=self.rasterize_mode,
-            sh_degree=splats.sh_degree,
+            sh_degree=sh_degree if sh_degree is not None else int((1 + splats.shN.shape[1]) ** 0.5) - 1,
             packed=False,
             with_ut=with_ut,
             radial_coeffs=radial,
@@ -262,7 +261,6 @@ class GaussianSplatModel(torch.nn.Module):
             opacities=self.splats["opacities"],
             sh0=self.splats["sh0"],
             shN=self.splats["shN"],
-            sh_degree=self.model_cfg.sh_degree,
         )
 
     def forward(
@@ -277,9 +275,8 @@ class GaussianSplatModel(torch.nn.Module):
 
         # Rasterize
         splats = self.get_splats().activate()
-        splats.sh_degree = sh_degree
         renders, alphas, info = self.renderer(
-            splats, camera, **raster_kwargs,
+            splats, camera, sh_degree=sh_degree, **raster_kwargs,
         )
         out_colors: Tensor = renders[..., :3]
 
