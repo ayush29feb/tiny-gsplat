@@ -16,10 +16,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 import hydra
-from gsplat import export_splats
 
 from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras, rgb_to_sh
-from model import GaussianSplatModel
+from model import GaussianSplatModel, Splats
 
 
 class TrainMetricsLogger:
@@ -263,34 +262,36 @@ class PlyLogger:
         if step % self.every != 0:
             return
 
-        splats = model.splats
-        means = splats["means"]
-        scales = splats["scales"]
-        quats = splats["quats"]
-        opacities = splats["opacities"]
+        params = model.splats
 
-        if "sh0" in splats:
-            sh0 = splats["sh0"]
-            shN = splats["shN"]
+        # Build raw Splats (log-space scales, logit opacities) for PLY export
+        splat_data = Splats(
+            means=params["means"], quats=params["quats"],
+            scales=params["scales"], opacities=params["opacities"],
+            colors=params.get("sh0", params.get("colors")),
+            sh_degree=model.model_cfg.sh_degree,
+        )
+
+        # Get SH coefficients for export
+        if "sh0" in params:
+            sh0 = params["sh0"]
+            shN = params["shN"]
         else:
             if model.app_module is not None:
                 rgb = model.app_module(
-                    features=splats["features"],
+                    features=params["features"],
                     embed_ids=None,
-                    dirs=torch.zeros_like(means[None, :, :]),
+                    dirs=torch.zeros_like(params["means"][None, :, :]),
                     sh_degree=model.model_cfg.sh_degree,
                 )
-                rgb = torch.sigmoid(rgb + splats["colors"]).squeeze(0)
+                rgb = torch.sigmoid(rgb + params["colors"]).squeeze(0)
             else:
-                rgb = torch.sigmoid(splats["colors"])
+                rgb = torch.sigmoid(params["colors"])
             sh0 = rgb_to_sh(rgb).unsqueeze(1)
-            shN = torch.empty(len(means), 0, 3, device=means.device)
+            shN = torch.empty(len(params["means"]), 0, 3, device=params["means"].device)
 
         path: str = os.path.join(self.ply_dir, f"splats_{step}.ply")
-        export_splats(
-            means=means, scales=scales, quats=quats, opacities=opacities,
-            sh0=sh0, shN=shN, format="ply", save_to=path,
-        )
+        splat_data.export_ply(path, sh0=sh0, shN=shN)
         print(f"PLY saved to {path}")
 
     def finalize(self) -> None:

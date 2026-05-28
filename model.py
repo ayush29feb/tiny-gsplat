@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from omegaconf import DictConfig
 from torch import Tensor
 
+from gsplat import export_splats
 from gsplat.cuda._torch_impl import _eval_sh_bases_fast
 from gsplat.rendering import rasterization
 from lib_bilagrid import BilateralGrid, slice as bg_slice, total_variation_loss
@@ -23,6 +24,14 @@ class Splats:
     opacities: Tensor
     colors: Tensor
     sh_degree: int
+
+    def export_ply(self, path: str, sh0: Tensor, shN: Tensor) -> None:
+        """Write Gaussian splats to a .ply file. Expects raw (log-space scales, logit opacities)."""
+        export_splats(
+            means=self.means, scales=self.scales, quats=self.quats,
+            opacities=self.opacities, sh0=sh0, shN=shN,
+            format="ply", save_to=path,
+        )
 
 
 class SplatRenderer:
