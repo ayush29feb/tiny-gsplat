@@ -167,9 +167,9 @@
 
 ![](assets/outputs/exp5_garden_28views/comparison.png)
 
-**Val render (image 0, step 7k — peak val PSNR):**
+**Val render (image 8, step 7k — peak val PSNR):**
 
-![](assets/outputs/exp5_garden_28views/val_renders/val_0000_step7000.png)
+![](assets/outputs/exp5_garden_28views/val_renders/val_0008_step7000.png)
 
 **Auto observations:**
 - Overfitting pattern is back — peaks at step 7k then declines, identical timing to our capture dataset
