@@ -106,3 +106,32 @@
 **Observations:**
 - Best quality renders so far — all 29 views used for training, stopped at sweet spot before overfitting
 - Fast training: 128s for the full run
+
+---
+
+## exp4_garden
+
+**Config:** `data_dir=data/garden_capture training.max_steps=30000 training.batch_size=4`
+
+- Mip-NeRF 360 garden dataset (COLMAP format, converted to capture format)
+- 185 images at 4x downsample (1297x840), 161 train / 24 val
+- Sanity check: standard benchmark to verify our training code works on well-posed data
+
+**Results:**
+
+| Metric | Value |
+|--------|-------|
+| Peak val PSNR | **26.91 dB** (step 29k) |
+| Final val PSNR | 26.89 dB (step 30k) |
+| Gaussians | 4.82M |
+| Training time | 1504s (~25 min) on H100 |
+
+**Val render (image 0, step 30k):**
+
+![](assets/outputs/exp4_garden/val_renders/val_0000_step30000.png)
+
+**Observations:**
+- Val PSNR reaches ~26.9 dB — competitive with published 3DGS results on garden (~27 dB)
+- No overfitting — val PSNR keeps improving through 30k steps, unlike our capture dataset
+- 4.82M Gaussians (vs 1.18M for capture) — more views support more Gaussians effectively
+- Confirms our training code is correct — the quality gap on the capture dataset is from the data (29 sparse views), not a bug
