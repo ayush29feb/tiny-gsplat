@@ -15,7 +15,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from dataset import CaptureDataset, load_cameras
+from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras
 from model import GaussianSplatModel
 
 
@@ -146,15 +146,16 @@ class ValMetricsLogger:
             return
         psnr_sum: float = 0.0
         for i in range(len(self.val_dataset)):
-            sample: dict[str, Tensor | int] = self.val_dataset[i]
-            c2w: Tensor = sample["camtoworld"].unsqueeze(0).to(self.device)
-            K: Tensor = sample["K"].unsqueeze(0).to(self.device)
-            gt: Tensor = sample["image"].unsqueeze(0).to(self.device)
-            radial = self.val_dataset.radial_coeffs[i:i+1].to(self.device) if self.val_dataset.radial_coeffs is not None else None
-            tangential = self.val_dataset.tangential_coeffs[i:i+1].to(self.device) if self.val_dataset.tangential_coeffs is not None else None
+            sample: Sample = self.val_dataset[i]
+            cam = sample.camera
+            c2w = cam.camtoworld.unsqueeze(0).to(self.device)
+            K = cam.K.unsqueeze(0).to(self.device)
+            gt = sample.image.unsqueeze(0).to(self.device)
+            radial = cam.radial_coeffs.unsqueeze(0).to(self.device) if cam.radial_coeffs is not None else None
+            tangential = cam.tangential_coeffs.unsqueeze(0).to(self.device) if cam.tangential_coeffs is not None else None
 
             rendered, _, _ = model(
-                c2w, K, self.val_dataset.width, self.val_dataset.height,
+                c2w, K, cam.width, cam.height,
                 radial_coeffs=radial, tangential_coeffs=tangential,
             )
             rendered = rendered[..., :3].clamp(0, 1)
@@ -207,18 +208,19 @@ class ValImageLogger:
         if step % self.every != 0 or self.val_dataset is None:
             return
         for i in range(len(self.val_dataset)):
-            sample: dict[str, Tensor | int] = self.val_dataset[i]
-            c2w: Tensor = sample["camtoworld"].unsqueeze(0).to(self.device)
-            K: Tensor = sample["K"].unsqueeze(0).to(self.device)
-            radial = self.val_dataset.radial_coeffs[i:i+1].to(self.device) if self.val_dataset.radial_coeffs is not None else None
-            tangential = self.val_dataset.tangential_coeffs[i:i+1].to(self.device) if self.val_dataset.tangential_coeffs is not None else None
+            sample: Sample = self.val_dataset[i]
+            cam = sample.camera
+            c2w = cam.camtoworld.unsqueeze(0).to(self.device)
+            K = cam.K.unsqueeze(0).to(self.device)
+            radial = cam.radial_coeffs.unsqueeze(0).to(self.device) if cam.radial_coeffs is not None else None
+            tangential = cam.tangential_coeffs.unsqueeze(0).to(self.device) if cam.tangential_coeffs is not None else None
 
             rendered, _, _ = model(
-                c2w, K, self.val_dataset.width, self.val_dataset.height,
+                c2w, K, cam.width, cam.height,
                 radial_coeffs=radial, tangential_coeffs=tangential,
             )
             out: np.ndarray = (rendered[0, ..., :3].cpu().clamp(0, 1).numpy() * 255).astype(np.uint8)
-            path: str = os.path.join(self.render_dir, f"val_{sample['image_id']:04d}_step{step}.png")
+            path: str = os.path.join(self.render_dir, f"val_{sample.image_id:04d}_step{step}.png")
             imageio.imwrite(path, out)
 
     def finalize(self) -> None:
@@ -231,10 +233,7 @@ class TestImageLogger:
         self.every = every
         self.render_dir: str = ""
         self.device: str = "cuda"
-        self.camtoworlds: Tensor
-        self.Ks: Tensor
-        self.width: int
-        self.height: int
+        self.cameras: CameraBatch
 
     def setup(self, result_dir: str, device: str = "cuda", **kw: Any) -> None:
         self.render_dir = os.path.join(result_dir, "renders")
@@ -244,17 +243,23 @@ class TestImageLogger:
         if not os.path.isabs(cameras_path):
             import hydra
             cameras_path = hydra.utils.to_absolute_path(cameras_path)
-        self.camtoworlds, self.Ks, self.width, self.height = load_cameras(cameras_path)
+        self.cameras = load_cameras(cameras_path)
 
     @torch.no_grad()
     def step(self, step: int, model: GaussianSplatModel, **kw: Any) -> None:
         if step % self.every != 0:
             return
-        for i in range(len(self.camtoworlds)):
-            c2w: Tensor = self.camtoworlds[i : i + 1].to(self.device)
-            K: Tensor = self.Ks[i : i + 1].to(self.device)
+        for i in range(len(self.cameras)):
+            cam: CameraData = self.cameras[i]
+            c2w = cam.camtoworld.unsqueeze(0).to(self.device)
+            K = cam.K.unsqueeze(0).to(self.device)
+            radial = cam.radial_coeffs.unsqueeze(0).to(self.device) if cam.radial_coeffs is not None else None
+            tangential = cam.tangential_coeffs.unsqueeze(0).to(self.device) if cam.tangential_coeffs is not None else None
 
-            rendered, _, _ = model(c2w, K, self.width, self.height)
+            rendered, _, _ = model(
+                c2w, K, cam.width, cam.height,
+                radial_coeffs=radial, tangential_coeffs=tangential,
+            )
             out: np.ndarray = (rendered[0, ..., :3].cpu().clamp(0, 1).numpy() * 255).astype(np.uint8)
             path: str = os.path.join(self.render_dir, f"render_{i:04d}_step{step}.png")
             imageio.imwrite(path, out)

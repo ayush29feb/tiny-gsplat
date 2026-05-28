@@ -104,11 +104,8 @@ def main(cfg: DictConfig):
         loggers.append(lg)
 
     # Move training data to GPU
-    train_c2w = train_set.camtoworlds.to(device)
-    train_Ks = train_set.Ks.to(device)
+    train_cams = train_set.cameras.to(device)
     train_images = train_set.images.to(device)
-    train_radial = train_set.radial_coeffs.to(device) if train_set.radial_coeffs is not None else None
-    train_tangential = train_set.tangential_coeffs.to(device) if train_set.tangential_coeffs is not None else None
 
     # Training loop
     global_tic = time.time()
@@ -117,18 +114,18 @@ def main(cfg: DictConfig):
     batch_size: int = cfg.training.batch_size
     for step in pbar:
         batch_idx = torch.randint(0, len(train_set), (batch_size,))
-        camtoworld = train_c2w[batch_idx]
-        K = train_Ks[batch_idx]
+        camtoworld = train_cams.camtoworlds[batch_idx]
+        K = train_cams.Ks[batch_idx]
         pixels = train_images[batch_idx]
         image_id = batch_idx.to(device)
 
         sh_degree_to_use = min(step // cfg.model.sh_degree_interval, cfg.model.sh_degree)
 
-        radial = train_radial[batch_idx] if train_radial is not None else None
-        tangential = train_tangential[batch_idx] if train_tangential is not None else None
+        radial = train_cams.radial_coeffs[batch_idx] if train_cams.radial_coeffs is not None else None
+        tangential = train_cams.tangential_coeffs[batch_idx] if train_cams.tangential_coeffs is not None else None
 
         rendered, alphas, info = model(
-            camtoworld, K, train_set.width, train_set.height,
+            camtoworld, K, train_cams.width, train_cams.height,
             image_id=image_id, sh_degree=sh_degree_to_use,
             radial_coeffs=radial, tangential_coeffs=tangential,
             absgrad=(strategy.absgrad if isinstance(strategy, DefaultStrategy) else False),
