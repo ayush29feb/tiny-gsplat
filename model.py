@@ -23,26 +23,30 @@ class Splats:
     opacities: Tensor
     sh0: Tensor
     shN: Tensor
+    splat_scale_factor: Tensor
 
     @property
     def colors(self) -> Tensor:
         return torch.cat([self.sh0, self.shN], 1)
 
     def activate(self) -> Splats:
-        """Return a new Splats with activated scales (exp) and opacities (sigmoid)."""
+        """Return a new Splats with activated scales (exp) and opacities (sigmoid), scaled by per-Gaussian factor."""
         return Splats(
-            means=self.means,
+            means=self.means * self.splat_scale_factor,
             quats=self.quats,
-            scales=torch.exp(self.scales),
+            scales=torch.exp(self.scales) * self.splat_scale_factor,
             opacities=torch.sigmoid(self.opacities),
             sh0=self.sh0,
             shN=self.shN,
+            splat_scale_factor=self.splat_scale_factor,
         )
 
     def export_ply(self, path: str) -> None:
-        """Write Gaussian splats to a .ply file. Expects raw (log-space scales, logit opacities)."""
+        """Write Gaussian splats to a .ply file. Applies splat_scale_factor to means/scales."""
+        scaled_means = self.means * self.splat_scale_factor
+        scaled_scales = self.scales + torch.log(self.splat_scale_factor)
         export_splats(
-            means=self.means, scales=self.scales, quats=self.quats,
+            means=scaled_means, scales=scaled_scales, quats=self.quats,
             opacities=self.opacities, sh0=self.sh0, shN=self.shN,
             format="ply", save_to=path,
         )
@@ -173,6 +177,7 @@ class GaussianSplatModel(torch.nn.Module):
             "opacities": torch.nn.Parameter(opacities),
             "sh0": torch.nn.Parameter(colors[:, :1, :]),
             "shN": torch.nn.Parameter(colors[:, 1:, :]),
+            "splat_scale_factor": torch.nn.Parameter(torch.ones((N, 1))),
         }).to(device)
 
         # Optional per-image appearance correction (affine color transform)
@@ -210,6 +215,7 @@ class GaussianSplatModel(torch.nn.Module):
             "opacities": lr_cfg.opacities,
             "sh0": lr_cfg.sh0,
             "shN": lr_cfg.shN,
+            "splat_scale_factor": lr_cfg.splat_scale_factor,
         }
         splat_optimizers: dict[str, torch.optim.Adam] = {}
         for name, lr in splat_lrs.items():
@@ -241,6 +247,9 @@ class GaussianSplatModel(torch.nn.Module):
             torch.optim.lr_scheduler.ExponentialLR(
                 splat_optimizers["means"], gamma=0.01 ** (1.0 / max_steps)
             ),
+            torch.optim.lr_scheduler.ExponentialLR(
+                splat_optimizers["splat_scale_factor"], gamma=0.01 ** (1.0 / max_steps)
+            ),
         ]
         if self.bg_module is not None and aux_optimizer is not None:
             schedulers.append(
@@ -265,6 +274,7 @@ class GaussianSplatModel(torch.nn.Module):
             opacities=self.splats["opacities"],
             sh0=self.splats["sh0"],
             shN=self.splats["shN"],
+            splat_scale_factor=self.splats["splat_scale_factor"],
         )
 
     def forward(
