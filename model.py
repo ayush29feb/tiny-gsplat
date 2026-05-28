@@ -9,7 +9,6 @@ from omegaconf import DictConfig
 from torch import Tensor
 
 from gsplat import export_splats
-from gsplat.cuda._torch_impl import _eval_sh_bases_fast
 from gsplat.rendering import rasterization
 from lib_bilagrid import BilateralGrid, slice as bg_slice, total_variation_loss
 
@@ -22,14 +21,19 @@ class Splats:
     quats: Tensor
     scales: Tensor
     opacities: Tensor
-    colors: Tensor
+    sh0: Tensor
+    shN: Tensor
     sh_degree: int
 
-    def export_ply(self, path: str, sh0: Tensor, shN: Tensor) -> None:
+    @property
+    def colors(self) -> Tensor:
+        return torch.cat([self.sh0, self.shN], 1)
+
+    def export_ply(self, path: str) -> None:
         """Write Gaussian splats to a .ply file. Expects raw (log-space scales, logit opacities)."""
         export_splats(
             means=self.means, scales=self.scales, quats=self.quats,
-            opacities=self.opacities, sh0=sh0, shN=shN,
+            opacities=self.opacities, sh0=self.sh0, shN=self.shN,
             format="ply", save_to=path,
         )
 
@@ -91,61 +95,21 @@ class SplatRenderer:
         )
 
 
-class AppearanceOptModule(torch.nn.Module):
-    """Per-image appearance MLP that predicts view-dependent color corrections."""
+class AppearanceEmbedding(torch.nn.Module):
+    """Per-image affine color correction. Learns a scale and bias per training image."""
 
-    def __init__(
-        self,
-        n: int,
-        feature_dim: int,
-        embed_dim: int = 16,
-        sh_degree: int = 3,
-        mlp_width: int = 64,
-        mlp_depth: int = 2,
-    ) -> None:
+    def __init__(self, n: int) -> None:
         super().__init__()
-        self.embed_dim = embed_dim
-        self.sh_degree = sh_degree
+        # 6 params per image: 3 log-scale + 3 bias, zero-initialized = identity
+        self.embeds = torch.nn.Embedding(n, 6)
+        torch.nn.init.zeros_(self.embeds.weight)
 
-        # Per-image learned embedding
-        self.embeds = torch.nn.Embedding(n, embed_dim)
-
-        # Color prediction MLP
-        layers: list[torch.nn.Module] = [
-            torch.nn.Linear(embed_dim + feature_dim + (sh_degree + 1) ** 2, mlp_width),
-            torch.nn.ReLU(inplace=True),
-        ]
-        for _ in range(mlp_depth - 1):
-            layers += [torch.nn.Linear(mlp_width, mlp_width), torch.nn.ReLU(inplace=True)]
-        layers.append(torch.nn.Linear(mlp_width, 3))
-        self.color_head = torch.nn.Sequential(*layers)
-
-    def forward(
-        self, features: Tensor, embed_ids: Tensor | None, dirs: Tensor, sh_degree: int
-    ) -> Tensor:
-        C, N = dirs.shape[:2]
-
-        # Look up per-image embeddings
-        if embed_ids is None:
-            embeds = torch.zeros(C, self.embed_dim, device=features.device)
-        else:
-            embeds = self.embeds(embed_ids)
-        embeds = embeds[:, None, :].expand(-1, N, -1)
-        features = features[None, :, :].expand(C, -1, -1)
-
-        # Evaluate spherical harmonics basis
-        dirs = F.normalize(dirs, dim=-1)
-        num_bases_to_use: int = (sh_degree + 1) ** 2
-        num_bases: int = (self.sh_degree + 1) ** 2
-        sh_bases = torch.zeros(C, N, num_bases, device=features.device)
-        sh_bases[:, :, :num_bases_to_use] = _eval_sh_bases_fast(num_bases_to_use, dirs)
-
-        # Concatenate and predict colors
-        if self.embed_dim > 0:
-            h = torch.cat([embeds, features, sh_bases], dim=-1)
-        else:
-            h = torch.cat([features, sh_bases], dim=-1)
-        return self.color_head(h)
+    def forward(self, colors: Tensor, image_ids: Tensor) -> Tensor:
+        # colors: [B, H, W, 3], image_ids: [B]
+        params = self.embeds(image_ids)  # [B, 6]
+        scale = torch.exp(params[:, :3])  # [B, 3]
+        bias = params[:, 3:]  # [B, 3]
+        return colors * scale[:, None, None, :] + bias[:, None, None, :]
 
 
 class GaussianSplatModel(torch.nn.Module):
@@ -170,7 +134,6 @@ class GaussianSplatModel(torch.nn.Module):
         self.device = device
         self.scene_scale = scene_scale
 
-        feature_dim: int | None = 32 if model_cfg.app_opt else None
         N: int = model_cfg.init_num_pts
 
         # Random point cloud initialization
@@ -193,30 +156,20 @@ class GaussianSplatModel(torch.nn.Module):
             ("opacities", torch.nn.Parameter(opacities), lr_cfg.opacities),
         ]
 
-        # Color representation: SH coefficients or learned features
-        if feature_dim is None:
-            colors = torch.zeros((N, (model_cfg.sh_degree + 1) ** 2, 3))
-            colors[:, 0, :] = rgb_to_sh(rgbs)
-            self._splat_params.append(("sh0", torch.nn.Parameter(colors[:, :1, :]), lr_cfg.sh0))
-            self._splat_params.append(("shN", torch.nn.Parameter(colors[:, 1:, :]), lr_cfg.shN))
-        else:
-            features = torch.rand(N, feature_dim)
-            self._splat_params.append(("features", torch.nn.Parameter(features), lr_cfg.sh0))
-            colors_param = torch.logit(rgbs)
-            self._splat_params.append(("colors", torch.nn.Parameter(colors_param), lr_cfg.sh0))
+        # Always use SH coefficients for colors
+        colors = torch.zeros((N, (model_cfg.sh_degree + 1) ** 2, 3))
+        colors[:, 0, :] = rgb_to_sh(rgbs)
+        self._splat_params.append(("sh0", torch.nn.Parameter(colors[:, :1, :]), lr_cfg.sh0))
+        self._splat_params.append(("shN", torch.nn.Parameter(colors[:, 1:, :]), lr_cfg.shN))
 
         self.splats = torch.nn.ParameterDict(
             {n: v for n, v, _ in self._splat_params}
         ).to(device)
 
-        # Optional per-image appearance optimization
-        self.app_module: AppearanceOptModule | None = None
+        # Optional per-image appearance correction (affine color transform)
+        self.app_module: AppearanceEmbedding | None = None
         if model_cfg.app_opt:
-            self.app_module = AppearanceOptModule(
-                n_train_images, feature_dim, model_cfg.app_embed_dim, model_cfg.sh_degree
-            ).to(device)
-            torch.nn.init.zeros_(self.app_module.color_head[-1].weight)
-            torch.nn.init.zeros_(self.app_module.color_head[-1].bias)
+            self.app_module = AppearanceEmbedding(n_train_images).to(device)
 
         # Optional bilateral grid for per-image color correction
         self.bg_module: torch.nn.Module | None = None
@@ -245,17 +198,13 @@ class GaussianSplatModel(torch.nn.Module):
                 eps=1e-15, betas=(0.9, 0.999), fused=True,
             )
 
-        # Appearance module optimizers
+        # Appearance module optimizer
         app_optimizers: list[torch.optim.Adam] = []
         if self.app_module is not None:
             app_optimizers = [
                 torch.optim.Adam(
-                    self.app_module.embeds.parameters(),
-                    lr=self.lr_cfg.app_opt * 10.0, weight_decay=1e-6,
-                ),
-                torch.optim.Adam(
-                    self.app_module.color_head.parameters(),
-                    lr=self.lr_cfg.app_opt,
+                    self.app_module.parameters(),
+                    lr=self.lr_cfg.app_opt, weight_decay=1e-6,
                 ),
             ]
 
@@ -279,37 +228,24 @@ class GaussianSplatModel(torch.nn.Module):
             sh_degree = self.model_cfg.sh_degree
 
         # Extract and activate splat parameters
-        means: Tensor = self.splats["means"]
-        quats: Tensor = self.splats["quats"]
-        scales: Tensor = torch.exp(self.splats["scales"])
-        opas: Tensor = torch.sigmoid(self.splats["opacities"])
-
-        # Ensure batched camera pose
-        camtoworld = camera.camtoworld
-        if camtoworld.dim() == 2:
-            camtoworld = camtoworld.unsqueeze(0)
-
-        # Compute colors: appearance MLP or spherical harmonics
-        if self.model_cfg.app_opt:
-            app_colors: Tensor = self.app_module(
-                features=self.splats["features"],
-                embed_ids=image_id,
-                dirs=means[None, :, :] - camtoworld[:, None, :3, 3],
-                sh_degree=sh_degree,
-            )
-            colors: Tensor = torch.sigmoid(app_colors + self.splats["colors"])
-        else:
-            colors = torch.cat([self.splats["sh0"], self.splats["shN"]], 1)
-
         # Rasterize
         splat_data = Splats(
-            means=means, quats=quats, scales=scales,
-            opacities=opas, colors=colors, sh_degree=sh_degree,
+            means=self.splats["means"],
+            quats=self.splats["quats"],
+            scales=torch.exp(self.splats["scales"]),
+            opacities=torch.sigmoid(self.splats["opacities"]),
+            sh0=self.splats["sh0"],
+            shN=self.splats["shN"],
+            sh_degree=sh_degree,
         )
         renders, alphas, info = self.renderer(
             splat_data, camera, **raster_kwargs,
         )
         out_colors: Tensor = renders[..., :3]
+
+        # Apply per-image appearance correction
+        if self.app_module is not None and image_id is not None:
+            out_colors = self.app_module(out_colors, image_id)
 
         # Apply bilateral grid color correction
         if self.bg_module is not None and image_id is not None:

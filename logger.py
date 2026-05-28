@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 import hydra
 
-from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras, rgb_to_sh
+from dataset import CameraBatch, CameraData, CaptureDataset, Sample, load_cameras
 from model import GaussianSplatModel, Splats
 
 
@@ -264,34 +264,15 @@ class PlyLogger:
 
         params = model.splats
 
-        # Build raw Splats (log-space scales, logit opacities) for PLY export
         splat_data = Splats(
             means=params["means"], quats=params["quats"],
             scales=params["scales"], opacities=params["opacities"],
-            colors=params.get("sh0", params.get("colors")),
+            sh0=params["sh0"], shN=params["shN"],
             sh_degree=model.model_cfg.sh_degree,
         )
 
-        # Get SH coefficients for export
-        if "sh0" in params:
-            sh0 = params["sh0"]
-            shN = params["shN"]
-        else:
-            if model.app_module is not None:
-                rgb = model.app_module(
-                    features=params["features"],
-                    embed_ids=None,
-                    dirs=torch.zeros_like(params["means"][None, :, :]),
-                    sh_degree=model.model_cfg.sh_degree,
-                )
-                rgb = torch.sigmoid(rgb + params["colors"]).squeeze(0)
-            else:
-                rgb = torch.sigmoid(params["colors"])
-            sh0 = rgb_to_sh(rgb).unsqueeze(1)
-            shN = torch.empty(len(params["means"]), 0, 3, device=params["means"].device)
-
         path: str = os.path.join(self.ply_dir, f"splats_{step}.ply")
-        splat_data.export_ply(path, sh0=sh0, shN=shN)
+        splat_data.export_ply(path)
         print(f"PLY saved to {path}")
 
     def finalize(self) -> None:
