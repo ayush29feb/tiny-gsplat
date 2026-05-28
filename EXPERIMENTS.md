@@ -140,3 +140,43 @@
 - No overfitting curve like we see in our capture — validates that the standard training pipeline has no severe bugs
 - The capture dataset quality gap is a data problem, not a code problem
 - Next steps: determine whether the capture issue is (1) a coverage problem (too few views, sparse angular sampling) or (2) a camera pose accuracy problem (calibration errors in the capture poses)
+
+---
+
+## exp5_garden_28views
+
+**Changelog since exp4:**
+- Added `max_train` parameter to CaptureDataset — evenly subsamples training indices
+
+**Config:** `data_dir=data/garden_capture training.max_steps=30000 training.batch_size=4 +data.max_train=28`
+
+- Same garden dataset but subsampled to 28 training views (matching our capture's count)
+- Same 24 val views as exp4 for fair comparison
+- Tests whether the overfitting is caused by view count alone
+
+**Results:**
+
+| | Garden 161 views (exp4) | Garden 28 views (exp5) | Capture 28 views (exp1) |
+|---|---|---|---|
+| Peak val PSNR | **26.91 dB** (step 29k) | 20.83 dB (step 7k) | 21.63 dB (step 7k) |
+| Final val PSNR | **26.89 dB** | 20.29 dB | 20.80 dB |
+| Gaussians | 4.82M | 2.61M | 1.18M |
+| Overfits? | No | Yes (after step 7k) | Yes (after step 7k) |
+
+**Comparison vs full garden:**
+
+![](assets/outputs/exp5_garden_28views/comparison.png)
+
+**Val render (image 0, step 7k — peak val PSNR):**
+
+![](assets/outputs/exp5_garden_28views/val_renders/val_0000_step7000.png)
+
+**Auto observations:**
+- Overfitting pattern is back — peaks at step 7k then declines, identical timing to our capture dataset
+- 6 dB gap between 161 and 28 training views on the same scene
+- Confirms the overfitting is a **view count issue**, not specific to our capture data or camera poses
+- Peak val PSNR (20.83 dB) is comparable to our capture (21.63 dB) — similar view count → similar quality ceiling
+- Garden with 28 views actually scores slightly lower than capture, possibly because garden is a larger/more complex outdoor scene
+
+**User observations:**
+- (pending)

@@ -137,6 +137,7 @@ class CaptureDataset(torch.utils.data.Dataset):
         split: str = "train",
         test_every: int = 8,
         val_ids: list[int] | None = None,
+        max_train: int | None = None,
     ) -> None:
         meta_path = os.path.join(data_dir, "inputs", "metadata.json")
         with open(meta_path) as f:
@@ -147,6 +148,9 @@ class CaptureDataset(torch.utils.data.Dataset):
         self._scene_scale = self._compute_scene_scale(all_cams.camtoworlds)
 
         indices = self._split_indices(len(all_images), split, test_every, val_ids)
+        if split == "train" and max_train is not None and len(indices) > max_train:
+            stride = len(indices) / max_train
+            indices = [indices[int(i * stride)] for i in range(max_train)]
         self.indices: list[int] = indices
         self.cameras: CameraBatch = all_cams[indices]
         self.images: Tensor = all_images[indices]
