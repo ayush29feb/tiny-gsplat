@@ -26,7 +26,7 @@ from omegaconf import DictConfig, OmegaConf
 from gsplat.strategy import DefaultStrategy, MCMCStrategy
 
 from dataset import CameraData, set_random_seed
-from model import GaussianSplatModel
+from model import GaussianSplatModel, SplatRenderer
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="train")
@@ -52,11 +52,13 @@ def main(cfg: DictConfig):
         f"({train_set.width}x{train_set.height}), scene_scale={scene_scale:.3f}"
     )
 
-    # Model
+    # Renderer + Model
+    renderer = SplatRenderer(**cfg.renderer)
     model = GaussianSplatModel(
         cfg.model, cfg.lr, cfg.training,
         len(train_set), scene_scale,
         train_set.width, train_set.height, device,
+        renderer=renderer,
     )
     print(f"Initialized {cfg.model.init_num_pts} Gaussians")
 

@@ -223,12 +223,7 @@ class GaussianSplatModel(torch.nn.Module):
             grid_xy = grid_xy / torch.tensor([width, height], device=device, dtype=torch.float32)
             self._grid_xy = grid_xy.unsqueeze(0)
 
-        self.renderer = renderer or SplatRenderer(
-            near_plane=model_cfg.near_plane,
-            far_plane=model_cfg.far_plane,
-            antialiased=model_cfg.antialiased,
-            use_distortion=model_cfg.use_distortion,
-        )
+        self.renderer = renderer or SplatRenderer()
 
     def get_optimizers(
         self,

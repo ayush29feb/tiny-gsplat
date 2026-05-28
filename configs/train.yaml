@@ -23,13 +23,15 @@ model:
   init_scale: 1.0
   sh_degree: 3
   sh_degree_interval: 1000
-  near_plane: 0.01
-  far_plane: 1.0e+10
-  antialiased: false
   random_bkgd: false
   app_opt: false
   app_embed_dim: 16
   bilateral_grid: false
+
+renderer:
+  near_plane: 0.01
+  far_plane: 1.0e+10
+  antialiased: false
   use_distortion: false
 
 training:
