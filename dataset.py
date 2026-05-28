@@ -87,6 +87,37 @@ class Sample:
     image_id: int
 
 
+@dataclass
+class Batch:
+    cameras: CameraBatch
+    images: Tensor
+    image_ids: Tensor
+
+    def to(self, device: str) -> Batch:
+        return Batch(
+            cameras=self.cameras.to(device),
+            images=self.images.to(device),
+            image_ids=self.image_ids.to(device),
+        )
+
+
+def collate_samples(samples: list[Sample]) -> Batch:
+    radial = torch.stack([s.camera.radial_coeffs for s in samples]) if samples[0].camera.radial_coeffs is not None else None
+    tangential = torch.stack([s.camera.tangential_coeffs for s in samples]) if samples[0].camera.tangential_coeffs is not None else None
+    return Batch(
+        cameras=CameraBatch(
+            camtoworlds=torch.stack([s.camera.camtoworld for s in samples]),
+            Ks=torch.stack([s.camera.K for s in samples]),
+            width=samples[0].camera.width,
+            height=samples[0].camera.height,
+            radial_coeffs=radial,
+            tangential_coeffs=tangential,
+        ),
+        images=torch.stack([s.image for s in samples]),
+        image_ids=torch.tensor([s.image_id for s in samples]),
+    )
+
+
 def knn(x: Tensor, K: int = 4) -> Tensor:
     x_np = x.cpu().numpy()
     model = NearestNeighbors(n_neighbors=K, metric="euclidean").fit(x_np)

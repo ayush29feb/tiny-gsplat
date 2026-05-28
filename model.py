@@ -12,7 +12,7 @@ from gsplat import export_splats
 from gsplat.rendering import rasterization
 from lib_bilagrid import BilateralGrid, slice as bg_slice, total_variation_loss
 
-from dataset import CameraData, knn, rgb_to_sh
+from dataset import CameraBatch, CameraData, knn, rgb_to_sh
 
 
 @dataclass
@@ -66,19 +66,26 @@ class SplatRenderer:
     def __call__(
         self,
         splats: Splats,
-        camera: CameraData,
+        cameras: CameraBatch | CameraData,
         sh_degree: int | None = None,
         **kwargs: Any,
     ) -> tuple[Tensor, Tensor, dict[str, Any]]:
         # Compute view matrices from camera-to-world
-        camtoworld = camera.camtoworld
+        if isinstance(cameras, CameraBatch):
+            camtoworld = cameras.camtoworlds
+            Ks = cameras.Ks
+        else:
+            camtoworld = cameras.camtoworld
+            Ks = cameras.K
         if camtoworld.dim() == 2:
             camtoworld = camtoworld.unsqueeze(0)
+        if Ks.dim() == 2:
+            Ks = Ks.unsqueeze(0)
         viewmats = torch.linalg.inv(camtoworld)
 
         # Resolve distortion coefficients
-        radial = camera.radial_coeffs
-        tangential = camera.tangential_coeffs
+        radial = cameras.radial_coeffs
+        tangential = cameras.tangential_coeffs
         with_ut = self.use_distortion and (radial is not None or tangential is not None)
         if not with_ut:
             radial = None
@@ -91,9 +98,9 @@ class SplatRenderer:
             opacities=splats.opacities,
             colors=splats.colors,
             viewmats=viewmats,
-            Ks=camera.K if camera.K.dim() == 3 else camera.K.unsqueeze(0),
-            width=camera.width,
-            height=camera.height,
+            Ks=Ks,
+            width=cameras.width,
+            height=cameras.height,
             near_plane=self.near_plane,
             far_plane=self.far_plane,
             rasterize_mode=self.rasterize_mode,
@@ -262,7 +269,7 @@ class GaussianSplatModel(torch.nn.Module):
 
     def forward(
         self,
-        camera: CameraData,
+        cameras: CameraBatch | CameraData,
         image_id: Tensor | None = None,
         sh_degree: int | None = None,
         **raster_kwargs: Any,
@@ -273,7 +280,7 @@ class GaussianSplatModel(torch.nn.Module):
         # Rasterize
         splats = self.get_splats().activate()
         renders, alphas, info = self.renderer(
-            splats, camera, sh_degree=sh_degree, **raster_kwargs,
+            splats, cameras, sh_degree=sh_degree, **raster_kwargs,
         )
         out_colors: Tensor = renders[..., :3]
 

@@ -25,7 +25,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from gsplat.strategy import DefaultStrategy, MCMCStrategy
 
-from dataset import CameraData, set_random_seed
+from dataset import Batch, collate_samples, set_random_seed
 from lib_bilagrid import total_variation_loss
 from model import GaussianSplatModel
 
@@ -117,34 +117,31 @@ def main(cfg: DictConfig):
         lg.setup(result_dir=result_dir, val_dataset=val_set, device=device)
         loggers.append(lg)
 
-    # Move training data to GPU
-    train_cams = train_set.cameras.to(device)
-    train_images = train_set.images.to(device)
+    # DataLoader
+    train_loader = torch.utils.data.DataLoader(
+        train_set, batch_size=cfg.training.batch_size,
+        shuffle=True, collate_fn=collate_samples,
+    )
+    train_iter = iter(train_loader)
 
     # Training loop
     global_tic = time.time()
     pbar = tqdm.tqdm(range(max_steps))
 
-    batch_size: int = cfg.training.batch_size
     for step in pbar:
-        batch_idx = torch.randint(0, len(train_set), (batch_size,))
-        pixels = train_images[batch_idx]
-        image_id = batch_idx.to(device)
-        batch_cam = CameraData(
-            camtoworld=train_cams.camtoworlds[batch_idx],
-            K=train_cams.Ks[batch_idx],
-            width=train_cams.width,
-            height=train_cams.height,
-            radial_coeffs=train_cams.radial_coeffs[batch_idx] if train_cams.radial_coeffs is not None else None,
-            tangential_coeffs=train_cams.tangential_coeffs[batch_idx] if train_cams.tangential_coeffs is not None else None,
-        )
+        try:
+            batch: Batch = next(train_iter)
+        except StopIteration:
+            train_iter = iter(train_loader)
+            batch = next(train_iter)
+        batch = batch.to(device)
 
         sh_degree_to_use = min(step // cfg.training.sh_degree_interval, cfg.model.sh_degree)
 
         strategy = schedule.strategy
         rendered, alphas, info = model(
-            batch_cam,
-            image_id=image_id, sh_degree=sh_degree_to_use,
+            batch.cameras,
+            image_id=batch.image_ids, sh_degree=sh_degree_to_use,
             absgrad=(strategy.absgrad if isinstance(strategy, DefaultStrategy) else False),
         )
 
@@ -155,9 +152,9 @@ def main(cfg: DictConfig):
         )
 
         # Loss
-        l1loss = F.l1_loss(rendered, pixels)
+        l1loss = F.l1_loss(rendered, batch.images)
         ssimloss = 1.0 - fused_ssim(
-            rendered.permute(0, 3, 1, 2), pixels.permute(0, 3, 1, 2), padding="valid",
+            rendered.permute(0, 3, 1, 2), batch.images.permute(0, 3, 1, 2), padding="valid",
         )
         loss = torch.lerp(l1loss, ssimloss, cfg.training.ssim_lambda)
         if model.bg_module is not None:
@@ -168,7 +165,7 @@ def main(cfg: DictConfig):
             loss = loss + cfg.training.scale_reg * torch.exp(model.splats["scales"]).mean()
 
         with torch.no_grad():
-            mse = F.mse_loss(rendered, pixels)
+            mse = F.mse_loss(rendered, batch.images)
             train_psnr: float = -10.0 * torch.log10(mse).item()
 
         loss.backward()
