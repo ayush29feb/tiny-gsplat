@@ -82,8 +82,8 @@ def main(cfg: DictConfig):
 
     # Data
     data_dir = hydra.utils.to_absolute_path(cfg.data_dir)
-    train_set = hydra.utils.instantiate(cfg.train_data, data_dir=data_dir)
-    val_set = hydra.utils.instantiate(cfg.val_data, data_dir=data_dir)
+    train_set = hydra.utils.instantiate(cfg.data, data_dir=data_dir, split="train")
+    val_set = hydra.utils.instantiate(cfg.data, data_dir=data_dir, split="val")
     if len(val_set) == 0:
         val_set = None
     scene_scale = train_set.scene_scale * 1.1

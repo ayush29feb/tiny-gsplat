@@ -2,17 +2,9 @@ seed: 42
 data_dir: ./capture
 device: cuda
 
-train_data:
+data:
   _target_: dataset.CaptureDataset
   data_dir: ${data_dir}
-  split: train
-  test_every: 8
-  val_ids: null
-
-val_data:
-  _target_: dataset.CaptureDataset
-  data_dir: ${data_dir}
-  split: val
   test_every: 8
   val_ids: null
 
