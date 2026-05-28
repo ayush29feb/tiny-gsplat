@@ -214,3 +214,46 @@
 **User observations:**
 - Overfitting gets worse with more initial points — keep 100k as default
 - The densification algorithm converges to ~1M Gaussians regardless of init count, so starting larger just wastes early training steps
+
+---
+
+## exp7_scale_factor_v2
+
+**Changelog since exp2:**
+- Fixed splat_scale_factor formula: `(scene_scale + exp(factor))` instead of raw multiplication
+- Init from position norm: `log(||position|| - scene_scale)` so effective multiplier starts at `||position||`
+- Stored in log-space, learned per-Gaussian
+
+**Config:** `training.max_steps=30000 training.batch_size=4 data.val_ids=[4] model.splat_scale_factor=true`
+
+**Results:**
+
+| | Baseline (exp1) | Scale Factor v1 (exp2) | Scale Factor v2 (exp7) |
+|---|---|---|---|
+| Peak val PSNR | **21.63 dB** (step 7k) | 21.45 dB (step 4k) | 21.12 dB (step 4k) |
+| Final val PSNR | **20.80 dB** | 20.58 dB | 20.57 dB |
+| Gaussians | **1.18M** | 1.82M | 1.47M |
+| Wall time | **691s** | 860s | 753s |
+
+**Comparison — val PSNR, train PSNR, Gaussian count:**
+
+![](assets/outputs/exp7_scale_factor_v2/comparison.png)
+
+**Test renders (step 4k — peak val PSNR):**
+
+| Test view 0 | Test view 1 |
+|-------------|-------------|
+| ![](assets/outputs/exp7_scale_factor_v2/renders/render_0000_step4000.png) | ![](assets/outputs/exp7_scale_factor_v2/renders/render_0001_step4000.png) |
+
+**Val render (image 4, step 4k — peak val PSNR):**
+
+![](assets/outputs/exp7_scale_factor_v2/val_renders/val_0004_step4000.png)
+
+**Auto observations:**
+- v2 is slightly worse than v1 (21.12 vs 21.45 dB peak), both worse than baseline (21.63 dB)
+- Fewer excess Gaussians than v1 (1.47M vs 1.82M) but still more than baseline (1.18M)
+- The per-Gaussian scale factor adds a degree of freedom that doesn't help this scene — the extra parameter allows more densification but the new Gaussians overfit
+- Position-norm initialization doesn't improve over zero init
+
+**User observations:**
+- (pending)
