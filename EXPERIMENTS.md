@@ -21,15 +21,15 @@
 - Peaks at step 7k (21.63 dB), then slowly degrades to 20.80 dB by 30k — overfitting to training views
 - Densification stops at step 15k (default `refine_stop_iter`), Gaussian count stabilizes at ~1.18M
 
-**Test renders (step 30k):**
+**Test renders (step 7k — peak val PSNR):**
 
 | Test view 0 | Test view 1 |
 |-------------|-------------|
-| ![](assets/outputs/exp1_baseline/renders/render_0000_step30000.png) | ![](assets/outputs/exp1_baseline/renders/render_0001_step30000.png) |
+| ![](assets/outputs/exp1_baseline/renders/render_0000_step7000.png) | ![](assets/outputs/exp1_baseline/renders/render_0001_step7000.png) |
 
-**Val render (image 4, step 30k):**
+**Val render (image 4, step 7k — peak val PSNR):**
 
-![](assets/outputs/exp1_baseline/val_renders/val_0004_step30000.png)
+![](assets/outputs/exp1_baseline/val_renders/val_0004_step7000.png)
 
 **Observations:**
 - Foreground (furniture, walls, whiteboard) is well-reconstructed
@@ -63,15 +63,15 @@
 
 ![](assets/outputs/exp2_scale_factor/comparison.png)
 
-**Test renders (step 30k):**
+**Test renders (step 4k — peak val PSNR):**
 
 | Test view 0 | Test view 1 |
 |-------------|-------------|
-| ![](assets/outputs/exp2_scale_factor/renders/render_0000_step30000.png) | ![](assets/outputs/exp2_scale_factor/renders/render_0001_step30000.png) |
+| ![](assets/outputs/exp2_scale_factor/renders/render_0000_step4000.png) | ![](assets/outputs/exp2_scale_factor/renders/render_0001_step4000.png) |
 
-**Val render (image 4, step 30k):**
+**Val render (image 4, step 4k — peak val PSNR):**
 
-![](assets/outputs/exp2_scale_factor/val_renders/val_0004_step30000.png)
+![](assets/outputs/exp2_scale_factor/val_renders/val_0004_step4000.png)
 
 **Observations:**
 - Scale factor adds 53% more Gaussians (1.82M vs 1.18M) without improving quality — slight 0.2 dB regression
