@@ -17,6 +17,7 @@ model:
   random_bkgd: false
   app_opt: false
   bilateral_grid: false
+  splat_scale_factor: false
 
 renderer:
   _target_: model.SplatRenderer

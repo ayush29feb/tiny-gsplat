@@ -177,7 +177,9 @@ class GaussianSplatModel(torch.nn.Module):
             "opacities": torch.nn.Parameter(opacities),
             "sh0": torch.nn.Parameter(colors[:, :1, :]),
             "shN": torch.nn.Parameter(colors[:, 1:, :]),
-            "splat_scale_factor": torch.nn.Parameter(torch.ones((N, 1))),
+            "splat_scale_factor": torch.nn.Parameter(
+                torch.ones((N, 1)), requires_grad=model_cfg.get("splat_scale_factor", False),
+            ),
         }).to(device)
 
         # Optional per-image appearance correction (affine color transform)
@@ -215,8 +217,9 @@ class GaussianSplatModel(torch.nn.Module):
             "opacities": lr_cfg.opacities,
             "sh0": lr_cfg.sh0,
             "shN": lr_cfg.shN,
-            "splat_scale_factor": lr_cfg.splat_scale_factor,
         }
+        if self.splats["splat_scale_factor"].requires_grad:
+            splat_lrs["splat_scale_factor"] = lr_cfg.splat_scale_factor
         splat_optimizers: dict[str, torch.optim.Adam] = {}
         for name, lr in splat_lrs.items():
             splat_optimizers[name] = torch.optim.Adam(
@@ -247,10 +250,11 @@ class GaussianSplatModel(torch.nn.Module):
             torch.optim.lr_scheduler.ExponentialLR(
                 splat_optimizers["means"], gamma=0.01 ** (1.0 / max_steps)
             ),
-            torch.optim.lr_scheduler.ExponentialLR(
-                splat_optimizers["splat_scale_factor"], gamma=0.01 ** (1.0 / max_steps)
-            ),
         ]
+        if "splat_scale_factor" in splat_optimizers:
+            schedulers.append(torch.optim.lr_scheduler.ExponentialLR(
+                splat_optimizers["splat_scale_factor"], gamma=0.01 ** (1.0 / max_steps)
+            ))
         if self.bg_module is not None and aux_optimizer is not None:
             schedulers.append(
                 torch.optim.lr_scheduler.ChainedScheduler([
