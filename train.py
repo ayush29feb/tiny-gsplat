@@ -83,6 +83,7 @@ def main(cfg: DictConfig):
     train_loader = torch.utils.data.DataLoader(
         train_set, batch_size=cfg.training.batch_size,
         shuffle=True, collate_fn=collate_samples,
+        pin_memory=True, num_workers=4, persistent_workers=True,
     )
     train_iter = iter(train_loader)
 
