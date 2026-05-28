@@ -183,3 +183,29 @@
 - Camera poses from the capture dataset are sufficiently accurate
 - The densification algorithm isn't creating enough splats to cover background details when view count is low — it relies on gradient signal which is weak in under-observed regions
 - Next: test whether starting with more initial Gaussians (4x, 8x) helps cover the gaps that densification misses
+
+---
+
+## exp6_init_pts
+
+**Config:** `training.max_steps=15000 training.batch_size=4 data.val_ids=[4] model.init_num_pts={100k,400k,800k}`
+
+- Tests whether more initial random Gaussians improve coverage in under-observed regions
+- 15k steps (densification stops at 15k by default)
+
+**Results:**
+
+| Init pts | Peak val PSNR | Peak step | Final (15k) | Gaussians | Time |
+|----------|--------------|-----------|-------------|-----------|------|
+| **100k** (baseline) | **21.67 dB** | 10k | **21.45 dB** | 1.04M | 311s |
+| 400k | 21.23 dB | 13k | 21.10 dB | 1.00M | 330s |
+| 800k | 20.67 dB | 10k | 20.54 dB | 1.05M | 357s |
+
+**Auto observations:**
+- More initial points is strictly worse — monotonic quality decrease with more init pts
+- All runs converge to ~1M Gaussians regardless of starting count — densification/pruning dominates
+- Larger init is slower to converge because the initial points are sparser per-Gaussian (same cube, more points = smaller initial scales from KNN)
+- The bottleneck is not initial coverage — it's that the densification gradient signal is too weak in under-observed regions regardless of how many points start there
+
+**User observations:**
+- (pending)
