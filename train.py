@@ -62,8 +62,8 @@ def main(cfg: DictConfig):
     )
     print(f"Initialized {cfg.model.init_num_pts} Gaussians")
 
-    # Optimizers
-    splat_optimizers, app_optimizers, bg_optimizers = model.get_optimizers(cfg.lr)
+    # Optimizers + Schedulers
+    splat_optimizers, aux_optimizer, schedulers = model.get_optimizers(cfg.lr)
 
     # Strategy
     strategy = hydra.utils.instantiate(cfg.strategy)
@@ -79,24 +79,7 @@ def main(cfg: DictConfig):
     if cfg.get("mcmc_strategy") is not None and cfg.mcmc_strategy is not None:
         mcmc_strategy = hydra.utils.instantiate(cfg.mcmc_strategy)
 
-    # Schedulers
     max_steps = cfg.training.max_steps
-    schedulers = [
-        torch.optim.lr_scheduler.ExponentialLR(
-            splat_optimizers["means"], gamma=0.01 ** (1.0 / max_steps)
-        ),
-    ]
-    if cfg.model.bilateral_grid and bg_optimizers:
-        schedulers.append(
-            torch.optim.lr_scheduler.ChainedScheduler([
-                torch.optim.lr_scheduler.LinearLR(
-                    bg_optimizers[0], start_factor=0.01, total_iters=1000
-                ),
-                torch.optim.lr_scheduler.ExponentialLR(
-                    bg_optimizers[0], gamma=0.01 ** (1.0 / max_steps)
-                ),
-            ])
-        )
 
     # Loggers — instantiate from config, then setup with runtime deps
     loggers = []
@@ -163,12 +146,9 @@ def main(cfg: DictConfig):
         for opt in splat_optimizers.values():
             opt.step()
             opt.zero_grad(set_to_none=True)
-        for opt in app_optimizers:
-            opt.step()
-            opt.zero_grad(set_to_none=True)
-        for opt in bg_optimizers:
-            opt.step()
-            opt.zero_grad(set_to_none=True)
+        if aux_optimizer is not None:
+            aux_optimizer.step()
+            aux_optimizer.zero_grad(set_to_none=True)
         for sched in schedulers:
             sched.step()
 

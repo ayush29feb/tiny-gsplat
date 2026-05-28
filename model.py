@@ -182,8 +182,11 @@ class GaussianSplatModel(torch.nn.Module):
 
     def get_optimizers(
         self, lr_cfg: DictConfig,
-    ) -> tuple[dict[str, torch.optim.Adam], list[torch.optim.Adam], list[torch.optim.Adam]]:
-        # Splat parameter optimizers
+    ) -> tuple[dict[str, torch.optim.Adam], torch.optim.Adam | None]:
+        eps = lr_cfg.get("eps", 1e-15)
+        betas = tuple(lr_cfg.get("betas", [0.9, 0.999]))
+
+        # Per-param splat optimizers (required by gsplat strategy for densification)
         splat_lrs = {
             "means": lr_cfg.means * self.scene_scale,
             "scales": lr_cfg.scales,
@@ -196,27 +199,47 @@ class GaussianSplatModel(torch.nn.Module):
         for name, lr in splat_lrs.items():
             splat_optimizers[name] = torch.optim.Adam(
                 [{"params": self.splats[name], "lr": lr, "name": name}],
-                eps=1e-15, betas=(0.9, 0.999), fused=True,
+                eps=eps, betas=betas, fused=True,
             )
 
-        # Appearance module optimizer
-        app_optimizers: list[torch.optim.Adam] = []
+        # Single optimizer for auxiliary modules (appearance, bilateral grid)
+        aux_param_groups: list[dict] = []
         if self.app_module is not None:
-            app_optimizers = [
-                torch.optim.Adam(
-                    self.app_module.parameters(),
-                    lr=lr_cfg.app_opt, weight_decay=1e-6,
-                ),
-            ]
-
-        # Bilateral grid optimizers
-        bg_optimizers: list[torch.optim.Adam] = []
+            aux_param_groups.append({
+                "params": list(self.app_module.parameters()),
+                "lr": lr_cfg.app_opt,
+                "weight_decay": lr_cfg.get("app_opt_weight_decay", 1e-6),
+            })
         if self.bg_module is not None:
-            bg_optimizers = [
-                torch.optim.Adam(self.bg_module.parameters(), lr=2e-3, eps=1e-15)
-            ]
+            aux_param_groups.append({
+                "params": list(self.bg_module.parameters()),
+                "lr": lr_cfg.get("bilateral_grid", 2e-3),
+            })
 
-        return splat_optimizers, app_optimizers, bg_optimizers
+        aux_optimizer: torch.optim.Adam | None = None
+        if aux_param_groups:
+            aux_optimizer = torch.optim.Adam(aux_param_groups, eps=eps)
+
+        # Schedulers
+        max_steps = self.training_cfg.max_steps
+        schedulers: list = [
+            torch.optim.lr_scheduler.ExponentialLR(
+                splat_optimizers["means"], gamma=0.01 ** (1.0 / max_steps)
+            ),
+        ]
+        if self.bg_module is not None and aux_optimizer is not None:
+            schedulers.append(
+                torch.optim.lr_scheduler.ChainedScheduler([
+                    torch.optim.lr_scheduler.LinearLR(
+                        aux_optimizer, start_factor=0.01, total_iters=1000
+                    ),
+                    torch.optim.lr_scheduler.ExponentialLR(
+                        aux_optimizer, gamma=0.01 ** (1.0 / max_steps)
+                    ),
+                ])
+            )
+
+        return splat_optimizers, aux_optimizer, schedulers
 
     def forward(
         self,
