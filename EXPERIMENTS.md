@@ -212,4 +212,5 @@
 - The bottleneck is not initial coverage — it's that the densification gradient signal is too weak in under-observed regions regardless of how many points start there
 
 **User observations:**
-- (pending)
+- Overfitting gets worse with more initial points — keep 100k as default
+- The densification algorithm converges to ~1M Gaussians regardless of init count, so starting larger just wastes early training steps
