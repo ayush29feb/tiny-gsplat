@@ -2,6 +2,7 @@
 /capture/
 /data/
 /outputs/
+/archive/
 *.egg-info/
 __pycache__/
 *.pyc
