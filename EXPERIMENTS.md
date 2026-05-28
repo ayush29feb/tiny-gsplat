@@ -21,9 +21,11 @@
 - Peaks at step 7k (21.63 dB), then slowly degrades to 20.80 dB by 30k — overfitting to training views
 - Densification stops at step 15k (default `refine_stop_iter`), Gaussian count stabilizes at ~1.18M
 
-**Test render (step 30k):**
+**Test renders (step 30k):**
 
-![](assets/outputs/exp1_baseline/renders/render_0001_step30000.png)
+| Test view 0 | Test view 1 |
+|-------------|-------------|
+| ![](assets/outputs/exp1_baseline/renders/render_0000_step30000.png) | ![](assets/outputs/exp1_baseline/renders/render_0001_step30000.png) |
 
 **Val render (image 4, step 30k):**
 
@@ -61,9 +63,11 @@
 
 ![](assets/outputs/exp2_scale_factor/comparison.png)
 
-**Test render (step 30k):**
+**Test renders (step 30k):**
 
-![](assets/outputs/exp2_scale_factor/renders/render_0001_step30000.png)
+| Test view 0 | Test view 1 |
+|-------------|-------------|
+| ![](assets/outputs/exp2_scale_factor/renders/render_0000_step30000.png) | ![](assets/outputs/exp2_scale_factor/renders/render_0001_step30000.png) |
 
 **Val render (image 4, step 30k):**
 
