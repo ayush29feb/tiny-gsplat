@@ -1,0 +1,73 @@
+seed: 42
+data_dir: ./capture
+device: cuda
+
+train_data:
+  _target_: dataset.CaptureDataset
+  data_dir: ${data_dir}
+  split: train
+  test_every: 8
+  val_ids: null
+
+val_data:
+  _target_: dataset.CaptureDataset
+  data_dir: ${data_dir}
+  split: val
+  test_every: 8
+  val_ids: null
+
+model:
+  init_num_pts: 100000
+  init_extent: 3.0
+  init_opa: 0.1
+  init_scale: 1.0
+  sh_degree: 3
+  sh_degree_interval: 1000
+  near_plane: 0.01
+  far_plane: 1.0e+10
+  antialiased: false
+  random_bkgd: false
+  app_opt: false
+  app_embed_dim: 16
+  bilateral_grid: false
+  use_distortion: false
+
+training:
+  max_steps: 7000
+  batch_size: 4
+  ssim_lambda: 0.2
+  opacity_reg: 0.0
+  scale_reg: 0.0
+
+lr:
+  means: 1.6e-4
+  scales: 5.0e-3
+  opacities: 5.0e-2
+  quats: 1.0e-3
+  sh0: 2.5e-3
+  shN: 1.25e-4
+  app_opt: 1.0e-3
+
+strategy:
+  _target_: gsplat.strategy.DefaultStrategy
+
+mcmc_strategy: null
+strategy_switch_step: null
+
+loggers:
+  train_metrics:
+    _target_: logger.TrainMetricsLogger
+    flush_every: 1000
+  val_metrics:
+    _target_: logger.ValMetricsLogger
+    every: 1000
+  val_image:
+    _target_: logger.ValImageLogger
+    every: 1000
+  test_image:
+    _target_: logger.TestImageLogger
+    cameras_path: ./capture/outputs/cameras.json
+    every: 1000
+  checkpoint:
+    _target_: logger.CheckpointLogger
+    every: ${training.max_steps}

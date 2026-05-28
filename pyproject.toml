@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
+
+[project]
+name = "tiny-gsplat"
+version = "0.1.0"
+description = "Simple Gaussian splat trainer for capture datasets"
+requires-python = ">=3.10"
+dependencies = [
+    "fused-ssim @ git+https://github.com/rahul-goel/fused-ssim@328dc9836f513d00c4b5bc38fe30478b4435cbb5",
+    "fused-bilagrid @ git+https://github.com/harry7557558/fused-bilagrid@49f0ef06c9f81810fb9b5dd9027cf1844950cc16",
+    "scikit-learn",
+    "hydra-core>=1.3",
+    "omegaconf",
+    "imageio",
+    "numpy<2.0.0",
+    "tqdm",
+    "Pillow",
+    "matplotlib",
+    "tensorly",
+]
