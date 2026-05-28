@@ -23,3 +23,11 @@ dependencies = [
     "matplotlib",
     "tensorly",
 ]
+
+[project.optional-dependencies]
+examples = [
+    "viser",
+    "nerfview",
+    "torchmetrics",
+    "pyyaml",
+]
