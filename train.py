@@ -25,7 +25,7 @@ from omegaconf import DictConfig, OmegaConf
 
 from gsplat.strategy import DefaultStrategy, MCMCStrategy
 
-from dataset import set_random_seed
+from dataset import CameraData, set_random_seed
 from model import GaussianSplatModel
 
 
@@ -114,20 +114,22 @@ def main(cfg: DictConfig):
     batch_size: int = cfg.training.batch_size
     for step in pbar:
         batch_idx = torch.randint(0, len(train_set), (batch_size,))
-        camtoworld = train_cams.camtoworlds[batch_idx]
-        K = train_cams.Ks[batch_idx]
         pixels = train_images[batch_idx]
         image_id = batch_idx.to(device)
+        batch_cam = CameraData(
+            camtoworld=train_cams.camtoworlds[batch_idx],
+            K=train_cams.Ks[batch_idx],
+            width=train_cams.width,
+            height=train_cams.height,
+            radial_coeffs=train_cams.radial_coeffs[batch_idx] if train_cams.radial_coeffs is not None else None,
+            tangential_coeffs=train_cams.tangential_coeffs[batch_idx] if train_cams.tangential_coeffs is not None else None,
+        )
 
         sh_degree_to_use = min(step // cfg.model.sh_degree_interval, cfg.model.sh_degree)
 
-        radial = train_cams.radial_coeffs[batch_idx] if train_cams.radial_coeffs is not None else None
-        tangential = train_cams.tangential_coeffs[batch_idx] if train_cams.tangential_coeffs is not None else None
-
         rendered, alphas, info = model(
-            camtoworld, K, train_cams.width, train_cams.height,
+            batch_cam,
             image_id=image_id, sh_degree=sh_degree_to_use,
-            radial_coeffs=radial, tangential_coeffs=tangential,
             absgrad=(strategy.absgrad if isinstance(strategy, DefaultStrategy) else False),
         )
 

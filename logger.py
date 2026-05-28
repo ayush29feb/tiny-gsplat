@@ -150,17 +150,10 @@ class ValMetricsLogger:
         psnr_sum: float = 0.0
         for i in range(len(self.val_dataset)):
             sample: Sample = self.val_dataset[i]
-            cam = sample.camera
-            c2w = cam.camtoworld.unsqueeze(0).to(self.device)
-            K = cam.K.unsqueeze(0).to(self.device)
+            cam = sample.camera.to(self.device)
             gt = sample.image.unsqueeze(0).to(self.device)
-            radial = cam.radial_coeffs.unsqueeze(0).to(self.device) if cam.radial_coeffs is not None else None
-            tangential = cam.tangential_coeffs.unsqueeze(0).to(self.device) if cam.tangential_coeffs is not None else None
 
-            rendered, _, _ = model(
-                c2w, K, cam.width, cam.height,
-                radial_coeffs=radial, tangential_coeffs=tangential,
-            )
+            rendered, _, _ = model(cam)
             rendered = rendered[..., :3].clamp(0, 1)
             mse: Tensor = F.mse_loss(rendered, gt)
             psnr_sum += -10.0 * torch.log10(mse).item()
@@ -212,16 +205,9 @@ class ValImageLogger:
             return
         for i in range(len(self.val_dataset)):
             sample: Sample = self.val_dataset[i]
-            cam = sample.camera
-            c2w = cam.camtoworld.unsqueeze(0).to(self.device)
-            K = cam.K.unsqueeze(0).to(self.device)
-            radial = cam.radial_coeffs.unsqueeze(0).to(self.device) if cam.radial_coeffs is not None else None
-            tangential = cam.tangential_coeffs.unsqueeze(0).to(self.device) if cam.tangential_coeffs is not None else None
+            cam = sample.camera.to(self.device)
 
-            rendered, _, _ = model(
-                c2w, K, cam.width, cam.height,
-                radial_coeffs=radial, tangential_coeffs=tangential,
-            )
+            rendered, _, _ = model(cam)
             out: np.ndarray = (rendered[0, ..., :3].cpu().clamp(0, 1).numpy() * 255).astype(np.uint8)
             path: str = os.path.join(self.render_dir, f"val_{sample.image_id:04d}_step{step}.png")
             imageio.imwrite(path, out)
@@ -252,16 +238,9 @@ class TestImageLogger:
         if step % self.every != 0:
             return
         for i in range(len(self.cameras)):
-            cam: CameraData = self.cameras[i]
-            c2w = cam.camtoworld.unsqueeze(0).to(self.device)
-            K = cam.K.unsqueeze(0).to(self.device)
-            radial = cam.radial_coeffs.unsqueeze(0).to(self.device) if cam.radial_coeffs is not None else None
-            tangential = cam.tangential_coeffs.unsqueeze(0).to(self.device) if cam.tangential_coeffs is not None else None
+            cam = self.cameras[i].to(self.device)
 
-            rendered, _, _ = model(
-                c2w, K, cam.width, cam.height,
-                radial_coeffs=radial, tangential_coeffs=tangential,
-            )
+            rendered, _, _ = model(cam)
             out: np.ndarray = (rendered[0, ..., :3].cpu().clamp(0, 1).numpy() * 255).astype(np.uint8)
             path: str = os.path.join(self.render_dir, f"render_{i:04d}_step{step}.png")
             imageio.imwrite(path, out)

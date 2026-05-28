@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import torch
@@ -11,7 +12,59 @@ from gsplat.cuda._torch_impl import _eval_sh_bases_fast
 from gsplat.rendering import rasterization
 from lib_bilagrid import BilateralGrid, slice as bg_slice, total_variation_loss
 
-from dataset import knn, rgb_to_sh
+from dataset import CameraData, knn, rgb_to_sh
+
+
+@dataclass
+class SplatData:
+    means: Tensor
+    quats: Tensor
+    scales: Tensor
+    opacities: Tensor
+    colors: Tensor
+    sh_degree: int
+
+
+class SplatRenderer:
+    def __init__(self, model_cfg: DictConfig) -> None:
+        self.near_plane: float = model_cfg.near_plane
+        self.far_plane: float = model_cfg.far_plane
+        self.rasterize_mode: str = "antialiased" if model_cfg.antialiased else "classic"
+        self.use_distortion: bool = model_cfg.use_distortion
+
+    def __call__(
+        self,
+        splats: SplatData,
+        camera: CameraData,
+        viewmats: Tensor,
+        **kwargs: Any,
+    ) -> tuple[Tensor, Tensor, dict[str, Any]]:
+        radial = camera.radial_coeffs
+        tangential = camera.tangential_coeffs
+        with_ut = self.use_distortion and (radial is not None or tangential is not None)
+        if not with_ut:
+            radial = None
+            tangential = None
+        return rasterization(
+            means=splats.means,
+            quats=splats.quats,
+            scales=splats.scales,
+            opacities=splats.opacities,
+            colors=splats.colors,
+            viewmats=viewmats,
+            Ks=camera.K if camera.K.dim() == 3 else camera.K.unsqueeze(0),
+            width=camera.width,
+            height=camera.height,
+            near_plane=self.near_plane,
+            far_plane=self.far_plane,
+            rasterize_mode=self.rasterize_mode,
+            sh_degree=splats.sh_degree,
+            packed=False,
+            with_ut=with_ut,
+            radial_coeffs=radial,
+            tangential_coeffs=tangential,
+            **kwargs,
+        )
 
 
 class AppearanceOptModule(torch.nn.Module):
@@ -138,7 +191,7 @@ class GaussianSplatModel(torch.nn.Module):
             grid_xy = grid_xy / torch.tensor([width, height], device=device, dtype=torch.float32)
             self._grid_xy = grid_xy.unsqueeze(0)
 
-        self.rasterize_mode: str = "antialiased" if model_cfg.antialiased else "classic"
+        self.renderer = SplatRenderer(model_cfg)
 
     def get_optimizers(
         self,
@@ -173,14 +226,9 @@ class GaussianSplatModel(torch.nn.Module):
 
     def forward(
         self,
-        camtoworld: Tensor,
-        K: Tensor,
-        width: int,
-        height: int,
+        camera: CameraData,
         image_id: Tensor | None = None,
         sh_degree: int | None = None,
-        radial_coeffs: Tensor | None = None,
-        tangential_coeffs: Tensor | None = None,
         **raster_kwargs: Any,
     ) -> tuple[Tensor, Tensor, dict[str, Any]]:
         if sh_degree is None:
@@ -191,10 +239,9 @@ class GaussianSplatModel(torch.nn.Module):
         scales: Tensor = torch.exp(self.splats["scales"])
         opas: Tensor = torch.sigmoid(self.splats["opacities"])
 
+        camtoworld = camera.camtoworld
         if camtoworld.dim() == 2:
             camtoworld = camtoworld.unsqueeze(0)
-        if K.dim() == 2:
-            K = K.unsqueeze(0)
 
         if self.model_cfg.app_opt:
             app_colors: Tensor = self.app_module(
@@ -207,30 +254,13 @@ class GaussianSplatModel(torch.nn.Module):
         else:
             colors = torch.cat([self.splats["sh0"], self.splats["shN"]], 1)
 
-        with_ut: bool = self.model_cfg.use_distortion and (radial_coeffs is not None or tangential_coeffs is not None)
-        if not with_ut:
-            radial_coeffs = None
-            tangential_coeffs = None
+        splat_data = SplatData(
+            means=means, quats=quats, scales=scales,
+            opacities=opas, colors=colors, sh_degree=sh_degree,
+        )
         viewmats: Tensor = torch.linalg.inv(camtoworld)
-        renders, alphas, info = rasterization(
-            means=means,
-            quats=quats,
-            scales=scales,
-            opacities=opas,
-            colors=colors,
-            viewmats=viewmats,
-            Ks=K,
-            width=width,
-            height=height,
-            near_plane=self.model_cfg.near_plane,
-            far_plane=self.model_cfg.far_plane,
-            rasterize_mode=self.rasterize_mode,
-            sh_degree=sh_degree,
-            packed=False,
-            with_ut=with_ut,
-            radial_coeffs=radial_coeffs,
-            tangential_coeffs=tangential_coeffs,
-            **raster_kwargs,
+        renders, alphas, info = self.renderer(
+            splat_data, camera, viewmats, **raster_kwargs,
         )
         out_colors: Tensor = renders[..., :3]
 

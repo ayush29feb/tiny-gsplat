@@ -27,6 +27,16 @@ class CameraData:
     radial_coeffs: Tensor | None = None
     tangential_coeffs: Tensor | None = None
 
+    def to(self, device: str) -> CameraData:
+        return CameraData(
+            camtoworld=self.camtoworld.to(device),
+            K=self.K.to(device),
+            width=self.width,
+            height=self.height,
+            radial_coeffs=self.radial_coeffs.to(device) if self.radial_coeffs is not None else None,
+            tangential_coeffs=self.tangential_coeffs.to(device) if self.tangential_coeffs is not None else None,
+        )
+
 
 @dataclass
 class CameraBatch:
